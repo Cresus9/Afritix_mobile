@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -56,29 +56,28 @@ export const FeaturedEventSlider: React.FC<FeaturedEventSliderProps> = ({ events
   };
   
   useEffect(() => {
+    if (!events || events.length <= 1) return;
+
     const interval = setInterval(() => {
-      if (events.length > 1) {
-        const nextIndex = (currentIndex + 1) % events.length;
-        if (flatListRef.current) {
-          // Use scrollToOffset instead of scrollToIndex for more reliable behavior
-          flatListRef.current.scrollToOffset({
-            offset: nextIndex * ITEM_WIDTH,
-            animated: true
-          });
-        }
-        setCurrentIndex(nextIndex);
+      const nextIndex = (currentIndex + 1) % events.length;
+      if (flatListRef.current) {
+        flatListRef.current.scrollToOffset({
+          offset: nextIndex * ITEM_WIDTH,
+          animated: true
+        });
       }
+      setCurrentIndex(nextIndex);
     }, 5000);
     
     return () => clearInterval(interval);
-  }, [currentIndex, events.length]);
+  }, [currentIndex, events]);
   
-  const handleEventPress = (eventId: string) => {
+  const handleEventPress = useCallback((eventId: string) => {
     router.push(`/event/${eventId}`);
-  };
+  }, [router]);
   
-  const handleNext = () => {
-    if (events.length > 1) {
+  const handleNext = useCallback(() => {
+    if (events?.length > 1) {
       const nextIndex = (currentIndex + 1) % events.length;
       if (flatListRef.current) {
         flatListRef.current.scrollToOffset({
@@ -88,10 +87,10 @@ export const FeaturedEventSlider: React.FC<FeaturedEventSliderProps> = ({ events
       }
       setCurrentIndex(nextIndex);
     }
-  };
+  }, [currentIndex, events]);
   
-  const handlePrev = () => {
-    if (events.length > 1) {
+  const handlePrev = useCallback(() => {
+    if (events?.length > 1) {
       const prevIndex = currentIndex === 0 ? events.length - 1 : currentIndex - 1;
       if (flatListRef.current) {
         flatListRef.current.scrollToOffset({
@@ -101,18 +100,18 @@ export const FeaturedEventSlider: React.FC<FeaturedEventSliderProps> = ({ events
       }
       setCurrentIndex(prevIndex);
     }
-  };
+  }, [currentIndex, events]);
   
-  const formatDate = (dateString: string) => {
+  const formatDate = useCallback((dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('fr-FR', { 
       month: 'short', 
       day: 'numeric', 
       year: 'numeric' 
     });
-  };
+  }, []);
   
-  const renderItem = ({ item, index }: { item: Event, index: number }) => {
+  const renderItem = useCallback(({ item, index }: { item: Event, index: number }) => {
     // Get image URL, handling both image and image_url properties
     const imageUrl = item.image_url || item.image;
     
@@ -280,7 +279,7 @@ export const FeaturedEventSlider: React.FC<FeaturedEventSliderProps> = ({ events
         </TouchableOpacity>
       </Animated.View>
     );
-  };
+  }, [colors, handleEventPress, Platform.OS, formatDate]);
   
   return (
     <View style={styles.container}>
@@ -307,7 +306,7 @@ export const FeaturedEventSlider: React.FC<FeaturedEventSliderProps> = ({ events
         }}
       />
       
-      {events.length > 1 && (
+      {events && events.length > 1 && (
         <View style={styles.controls}>
           <TouchableOpacity 
             style={[styles.controlButton, { backgroundColor: colors.cardLight }]} 
@@ -317,7 +316,7 @@ export const FeaturedEventSlider: React.FC<FeaturedEventSliderProps> = ({ events
           </TouchableOpacity>
           
           <View style={styles.pagination}>
-            {events.map((_, index) => (
+            {(events || []).map((_, index) => (
               <View
                 key={index}
                 style={[

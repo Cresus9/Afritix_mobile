@@ -26,7 +26,7 @@ import { SearchBar } from '@/components/SearchBar';
 export default function TicketsScreen() {
   const router = useRouter();
   const { user, isAuthenticated } = useAuthStore();
-  const { tickets, fetchUserTickets } = useTicketsStore();
+  const { tickets, fetchTickets, error } = useTicketsStore();
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredTickets, setFilteredTickets] = useState([]);
@@ -34,14 +34,14 @@ export default function TicketsScreen() {
   useEffect(() => {
     const loadTickets = async () => {
       setIsLoading(true);
-      if (isAuthenticated) {
-        await fetchUserTickets(user?.id);
+      if (user && user.id) {
+        await fetchTickets(user.id);
       }
       setIsLoading(false);
     };
     
     loadTickets();
-  }, [isAuthenticated, user]);
+  }, [user]);
   
   useEffect(() => {
     if (tickets) {
@@ -98,6 +98,14 @@ export default function TicketsScreen() {
           onAction={() => router.push('/auth/login')}
           icon={<Ticket size={48} color={colors.textSecondary} />}
         />
+      </SafeAreaView>
+    );
+  }
+  
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <Text style={{ color: colors.error, textAlign: 'center', marginTop: 32 }}>{error}</Text>
       </SafeAreaView>
     );
   }

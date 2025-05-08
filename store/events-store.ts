@@ -3,8 +3,8 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { Event } from '@/types';
-import { mockEvents } from '@/mocks/events';
 import { useCategoriesStore } from './categories-store';
+import { getIconForCategory } from './store-utils';
 
 interface EventsState {
   events: Event[];
@@ -20,6 +20,7 @@ interface EventsState {
   searchEvents: (query: string) => void;
   filterByCategory: (category: string | null) => void;
   clearFilters: () => void;
+  selectEvent: (event: Event | null) => void;
 }
 
 export const useEventsStore = create<EventsState>()(
@@ -34,6 +35,10 @@ export const useEventsStore = create<EventsState>()(
       searchQuery: '',
       selectedCategory: null,
       
+      selectEvent: (event: Event | null) => {
+        set({ selectedEvent: event });
+      },
+      
       fetchEvents: async () => {
         set({ isLoading: true, error: null });
         
@@ -41,7 +46,30 @@ export const useEventsStore = create<EventsState>()(
           // Fetch events from Supabase
           const { data, error } = await supabase
             .from('events')
-            .select('*')
+            .select(`
+              id,
+              title,
+              description,
+              date,
+              time,
+              location,
+              image_url,
+              price,
+              currency,
+              capacity,
+              tickets_sold,
+              status,
+              featured,
+              created_at,
+              updated_at,
+              avg_rating,
+              review_count,
+              venue_layout_id,
+              coordinates,
+              organizer_id,
+              categories
+            `)
+            .eq('status', 'PUBLISHED')  // Only fetch published events
             .order('date', { ascending: true });
           
           if (error) {
@@ -51,58 +79,42 @@ export const useEventsStore = create<EventsState>()(
           if (data && data.length > 0) {
             // Map Supabase data to Event type
             const events: Event[] = data.map(item => ({
-              id: item.id,
-              title: item.title,
-              description: item.description,
-              date: item.date,
-              time: item.time,
-              location: item.location,
-              venue: item.venue,
+              ...item,
+              venue: item.location,
               image: item.image_url,
-              price: item.price,
-              currency: item.currency || 'XOF',
-              category: item.category,
-              subcategory: item.subcategory,
-              organizer: item.organizer,
-              featured: item.featured || false,
-              ticketsAvailable: item.tickets_available,
-              ticketsSold: item.tickets_sold,
+              category: item.categories?.[0] || '',
+              subcategory: '',
+              ticketsAvailable: item.capacity - item.tickets_sold,
+              isFeatured: item.featured,
+              availableTickets: item.capacity - item.tickets_sold
             }));
             
-            // Filter featured events
+            // Filter featured events (only from published events)
             const featured = events.filter(event => event.featured);
             
             set({ 
               events, 
               featuredEvents: featured,
               filteredEvents: events,
-              isLoading: false 
+              isLoading: false,
+              error: null
             });
           } else {
-            // Use mock data if no events from Supabase
-            console.log('No events found in Supabase, using mock data');
-            
-            // Filter featured events from mock data
-            const featured = mockEvents.filter(event => event.featured);
-            
             set({ 
-              events: mockEvents, 
-              featuredEvents: featured,
-              filteredEvents: mockEvents,
+              events: [], 
+              featuredEvents: [],
+              filteredEvents: [],
+              error: 'No published events found',
               isLoading: false 
             });
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error('Error fetching events:', error);
-          
-          // Fallback to mock data on error
-          const featured = mockEvents.filter(event => event.featured);
-          
           set({ 
-            events: mockEvents, 
-            featuredEvents: featured,
-            filteredEvents: mockEvents,
-            error: 'Failed to fetch events',
+            events: [], 
+            featuredEvents: [],
+            filteredEvents: [],
+            error: error.message || 'Failed to fetch events',
             isLoading: false 
           });
         }
@@ -112,10 +124,31 @@ export const useEventsStore = create<EventsState>()(
         set({ isLoading: true, error: null });
         
         try {
-          // First try to fetch from Supabase
           const { data, error } = await supabase
             .from('events')
-            .select('*')
+            .select(`
+              id,
+              title,
+              description,
+              date,
+              time,
+              location,
+              image_url,
+              price,
+              currency,
+              capacity,
+              tickets_sold,
+              status,
+              featured,
+              created_at,
+              updated_at,
+              avg_rating,
+              review_count,
+              venue_layout_id,
+              coordinates,
+              organizer_id,
+              categories
+            `)
             .eq('id', id)
             .single();
           
@@ -123,57 +156,37 @@ export const useEventsStore = create<EventsState>()(
             throw error;
           }
           
-          if (data) {
-            // Map Supabase data to Event type
-            const event: Event = {
-              id: data.id,
-              title: data.title,
-              description: data.description,
-              date: data.date,
-              time: data.time,
-              location: data.location,
-              venue: data.venue,
-              image: data.image_url,
-              price: data.price,
-              currency: data.currency || 'XOF',
-              category: data.category,
-              subcategory: data.subcategory,
-              organizer: data.organizer,
-              featured: data.featured || false,
-              ticketsAvailable: data.tickets_available,
-              ticketsSold: data.tickets_sold,
-            };
-            
-            set({ selectedEvent: event, isLoading: false });
-          } else {
-            // If not found in Supabase, look in mock data
-            const mockEvent = mockEvents.find(event => event.id === id);
-            
-            if (mockEvent) {
-              set({ selectedEvent: mockEvent, isLoading: false });
-            } else {
-              set({ 
-                error: 'Event not found', 
-                isLoading: false,
-                selectedEvent: null
-              });
-            }
-          }
-        } catch (error) {
-          console.error('Error fetching event by ID:', error);
-          
-          // Fallback to mock data on error
-          const mockEvent = mockEvents.find(event => event.id === id);
-          
-          if (mockEvent) {
-            set({ selectedEvent: mockEvent, isLoading: false });
-          } else {
+          if (!data) {
             set({ 
-              error: 'Failed to fetch event details', 
+              error: 'Event not found', 
               isLoading: false,
               selectedEvent: null
             });
+            return;
           }
+          
+          // Map Supabase data to Event type
+          const event: Event = {
+            ...data, // Copy all backend fields directly
+            // Add frontend-specific fields
+            venue: data.location, // Use location as venue
+            image: data.image_url, // For backward compatibility
+            category: data.categories?.[0] || '', // Use first category if available
+            subcategory: '', // Default empty string
+            ticketsAvailable: data.capacity - data.tickets_sold,
+            isFeatured: data.featured,
+            availableTickets: data.capacity - data.tickets_sold
+          };
+          
+          set({ selectedEvent: event, isLoading: false });
+          
+        } catch (error: any) {
+          console.error('Error fetching event by ID:', error);
+          set({ 
+            error: error.message || 'Failed to fetch event details', 
+            isLoading: false,
+            selectedEvent: null
+          });
         }
       },
       
@@ -191,21 +204,25 @@ export const useEventsStore = create<EventsState>()(
         // Apply search query filter
         if (query) {
           const lowercaseQuery = query.toLowerCase();
-          filtered = filtered.filter(event => 
-            (event.title?.toLowerCase() || "").includes(lowercaseQuery) ||
-            (event.description?.toLowerCase() || "").includes(lowercaseQuery) ||
-            (event.location?.toLowerCase() || "").includes(lowercaseQuery) ||
-            (event.venue?.toLowerCase() || "").includes(lowercaseQuery) ||
-            (event.organizer?.toLowerCase() || "").includes(lowercaseQuery)
-          );
+          filtered = filtered.filter(event => {
+            const title = event.title?.toLowerCase() ?? '';
+            const description = event.description?.toLowerCase() ?? '';
+            const location = event.location?.toLowerCase() ?? '';
+            const venue = event.venue?.toLowerCase() ?? '';
+            
+            return title.includes(lowercaseQuery) ||
+                   description.includes(lowercaseQuery) ||
+                   location.includes(lowercaseQuery) ||
+                   venue.includes(lowercaseQuery);
+          });
         }
         
         // Apply category filter if selected
         if (selectedCategory) {
-          filtered = filtered.filter(event => {
-            // Check if the event matches the selected category or subcategory
-            return event.category === selectedCategory || event.subcategory === selectedCategory;
-          });
+          filtered = filtered.filter(event => 
+            (event.category ?? '') === selectedCategory || 
+            (event.subcategory ?? '') === selectedCategory
+          );
         }
         
         set({ filteredEvents: filtered });
@@ -224,24 +241,36 @@ export const useEventsStore = create<EventsState>()(
         
         // Apply category filter
         if (category) {
-          // Get all categories to check if this is a parent category
-          const categoriesStore = useCategoriesStore.getState();
-          const selectedCategoryObj = categoriesStore.allCategories.find(c => c.name === category);
+          // Normalize category names and their aliases
+          const categoryMap = {
+            'concerts': ['concert', 'music', 'music-concerts'],
+            'sport': ['sports', 'sporting', 'athletic'],
+            'festivals': ['festival', 'fest', 'celebration'],
+            'cinema': ['movie', 'film', 'screening']
+          };
           
-          if (selectedCategoryObj && selectedCategoryObj.children && selectedCategoryObj.children.length > 0) {
-            // This is a parent category, include all its children
-            const childNames = selectedCategoryObj.children.map(child => child.name);
-            
-            filtered = filtered.filter(event => 
-              event.category === category || 
-              childNames.includes(event.category) ||
-              event.subcategory === category ||
-              childNames.includes(event.subcategory || "")
-            );
+          const normalizedCategory = category.toLowerCase();
+          const matchingCategory = Object.entries(categoryMap).find(([main, aliases]) => 
+            main === normalizedCategory || aliases.some(alias => normalizedCategory === alias)
+          );
+          
+          if (matchingCategory) {
+            const [mainCategory, aliases] = matchingCategory;
+            filtered = filtered.filter(event => {
+              const eventCategory = (event.category || '').toLowerCase();
+              const eventSubcategory = (event.subcategory || '').toLowerCase();
+              
+              // Check if the event's category or subcategory matches either the main category or any of its aliases
+              return eventCategory === mainCategory ||
+                     aliases.some(alias => eventCategory.includes(alias)) ||
+                     eventSubcategory === mainCategory ||
+                     aliases.some(alias => eventSubcategory.includes(alias));
+            });
           } else {
-            // This is a regular category or subcategory
+            // If no mapping found, do a simple case-insensitive match
             filtered = filtered.filter(event => 
-              event.category === category || event.subcategory === category
+              (event.category || '').toLowerCase() === normalizedCategory || 
+              (event.subcategory || '').toLowerCase() === normalizedCategory
             );
           }
         }
@@ -249,13 +278,17 @@ export const useEventsStore = create<EventsState>()(
         // Apply search query filter if exists
         if (searchQuery) {
           const lowercaseQuery = searchQuery.toLowerCase();
-          filtered = filtered.filter(event => 
-            (event.title?.toLowerCase() || "").includes(lowercaseQuery) ||
-            (event.description?.toLowerCase() || "").includes(lowercaseQuery) ||
-            (event.location?.toLowerCase() || "").includes(lowercaseQuery) ||
-            (event.venue?.toLowerCase() || "").includes(lowercaseQuery) ||
-            (event.organizer?.toLowerCase() || "").includes(lowercaseQuery)
-          );
+          filtered = filtered.filter(event => {
+            const title = event.title?.toLowerCase() ?? '';
+            const description = event.description?.toLowerCase() ?? '';
+            const location = event.location?.toLowerCase() ?? '';
+            const venue = event.venue?.toLowerCase() ?? '';
+            
+            return title.includes(lowercaseQuery) ||
+                   description.includes(lowercaseQuery) ||
+                   location.includes(lowercaseQuery) ||
+                   venue.includes(lowercaseQuery);
+          });
         }
         
         set({ filteredEvents: filtered });

@@ -327,11 +327,11 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   categoriesContainer: {
-    marginBottom: 16,
+    marginBottom: 24,
   },
   categoriesScrollContent: {
     paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingVertical: 12,
   },
   categoryButton: {
     paddingHorizontal: 20,
@@ -352,11 +352,12 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   sliderSection: {
-    marginTop: 8,
+    marginTop: 16,
     marginBottom: 32,
   },
   section: {
     marginBottom: 32,
+    paddingTop: 8,
   },
   sectionHeader: {
     flexDirection: 'row',

@@ -12,9 +12,8 @@ interface TicketsState {
   isLoading: boolean;
   error: string | null;
   
-  fetchTickets: () => Promise<void>;
+  fetchTickets: (userId: string) => Promise<void>;
   fetchTicketById: (id: string) => Promise<void>;
-  fetchValidationHistory: (ticketId: string) => Promise<ValidationEvent[]>;
   purchaseTicket: (eventId: string, ticketTypeId: string) => Promise<Ticket>;
   transferTicket: (ticketId: string, recipientEmail: string) => Promise<void>;
 }
@@ -79,118 +78,56 @@ export const useTicketsStore = create<TicketsState>()(
       isLoading: false,
       error: null,
       
-      fetchTickets: async () => {
-        set({ isLoading: true, error: null });
+      fetchTickets: async (userId: string) => {
         try {
-          // Get current user
-          const { user } = useAuthStore.getState();
+          console.log('Fetching tickets for user:', userId);
           
-          if (!user) {
-            throw new Error('Utilisateur non connecté');
-          }
-          
-          console.log('Fetching tickets for user:', user.id);
-          
-          // Fetch tickets
-          const { data: ticketsData, error: ticketsError } = await supabase
+          // Fetch tickets with related data in a single query (remove ticket_validations)
+          const { data: tickets, error: ticketsError } = await supabase
             .from('tickets')
-            .select('*')
-            .eq('user_id', user.id)
+            .select(`
+              *,
+              event:events(*),
+              ticket_type:ticket_types(*)
+            `)
+            .eq('user_id', userId)
             .order('created_at', { ascending: false });
-          
-          if (ticketsError) {
-            console.error('Tickets fetch error:', JSON.stringify(ticketsError, null, 2));
-            throw ticketsError;
-          }
-          
-          if (!ticketsData || ticketsData.length === 0) {
-            console.log('No tickets found for user');
-            set({ tickets: [], isLoading: false });
-            return;
-          }
-          
-          // Get all event IDs from tickets
-          const eventIds = [...new Set(ticketsData.map((ticket: TicketData) => ticket.event_id))];
-          
-          // Fetch events for these tickets
-          const { data: eventsData, error: eventsError } = await supabase
-            .from('events')
-            .select('*')
-            .in('id', eventIds);
-          
-          if (eventsError) {
-            console.error('Events fetch error:', JSON.stringify(eventsError, null, 2));
-            throw eventsError;
-          }
-          
-          // Get all ticket type IDs from tickets
-          const ticketTypeIds = [...new Set(ticketsData.map((ticket: TicketData) => ticket.ticket_type_id))];
-          
-          // Fetch ticket types for these tickets
-          const { data: ticketTypesData, error: ticketTypesError } = await supabase
-            .from('ticket_types')
-            .select('*')
-            .in('id', ticketTypeIds);
-          
-          if (ticketTypesError) {
-            console.error('Ticket types fetch error:', JSON.stringify(ticketTypesError, null, 2));
-            throw ticketTypesError;
-          }
-          
-          console.log('Data fetched successfully:');
-          console.log('- Tickets:', ticketsData?.length || 0);
-          console.log('- Events:', eventsData?.length || 0);
-          console.log('- Ticket Types:', ticketTypesData?.length || 0);
-          
-          // Transform data to match our Ticket type
-          const transformedTickets: Ticket[] = [];
-          
-          for (const ticket of ticketsData) {
-            const event = eventsData?.find((e: EventData) => e.id === ticket.event_id);
-            const ticketType = ticketTypesData?.find((tt: TicketTypeData) => tt.id === ticket.ticket_type_id);
-            
-            // Skip if we don't have related data
-            if (!event || !ticketType) {
-              console.warn('Missing related data for ticket:', ticket.id);
-              continue;
-            }
-            
-            // Generate fresh QR code for each ticket to ensure it's valid
-            // This is important to match the backend's expectations
-            const qrCode = generateQRCodeData(ticket.id);
-            
-            transformedTickets.push({
-              id: ticket.id,
-              eventId: ticket.event_id,
-              eventTitle: event.title,
-              eventDate: event.date,
-              eventTime: event.time,
-              eventLocation: event.location,
-              eventVenue: event.location, // Use location as venue
-              eventImage: event.image_url,
-              ticketType: ticketType.name,
-              price: ticketType.price,
-              currency: event.currency || 'XOF',
-              purchaseDate: new Date(ticket.created_at).toISOString().split('T')[0],
-              qrCode: qrCode, // Use freshly generated QR code
-              used: ticket.status === 'USED',
-              status: ticket.status || 'VALID',
-              scannedAt: ticket.scanned_at,
-              scannedBy: ticket.scanned_by,
-              scanLocation: ticket.scan_location,
-              order_id: ticket.order_id,
-              user_id: ticket.user_id,
-              ticket_type_id: ticket.ticket_type_id,
-              seat_id: ticket.seat_id,
-              transfer_id: ticket.transfer_id,
-              updated_at: ticket.updated_at
-            });
-          }
-          
-          set({ tickets: transformedTickets, isLoading: false });
+
+          console.log('Tickets query result:', tickets, ticketsError);
+
+          if (ticketsError) throw ticketsError;
+
+          // For each ticket, fetch scan history from ticket_scans
+          const ticketsWithScans = await Promise.all(
+            tickets.map(async (ticket) => {
+              const { data: scanHistory, error: scanError } = await supabase
+                .from('ticket_scans')
+                .select('*')
+                .eq('ticket_id', ticket.id)
+                .order('created_at', { ascending: false });
+              if (scanError) {
+                console.error('Error fetching scan history:', scanError);
+              }
+              // Map event fields and ticket type from nested objects
+              return {
+                ...ticket,
+                eventDate: ticket.event?.date || '',
+                eventTitle: ticket.event?.title || '',
+                eventLocation: ticket.event?.location || '',
+                eventVenue: ticket.event?.venue || ticket.event?.location || '',
+                eventImage: ticket.event?.image_url || '',
+                eventTime: ticket.event?.time || '',
+                ticketType: ticket.ticket_type?.name || '',
+                price: ticket.ticket_type?.price || 0,
+                scanHistory: scanHistory || []
+              };
+            })
+          );
+
+          set({ tickets: ticketsWithScans, isLoading: false, error: null });
         } catch (error) {
           console.error('Error fetching tickets:', error);
-          set({ error: handleSupabaseError(error), isLoading: false });
+          set({ error: 'Failed to fetch tickets', isLoading: false });
         }
       },
       
@@ -203,12 +140,24 @@ export const useTicketsStore = create<TicketsState>()(
           if (existingTicket) {
             // Generate fresh QR code to ensure it's valid
             const qrCode = generateQRCodeData(id);
-            
-            // Even if we have the ticket, we still need to fetch validation history
-            const validationHistory = await get().fetchValidationHistory(id);
-            
+            // Fetch scan history from ticket_scans
+            let scanHistory = [];
+            try {
+              const { data: scans, error: scanError } = await supabase
+                .from('ticket_scans')
+                .select('*')
+                .eq('ticket_id', id)
+                .order('created_at', { ascending: false });
+              if (scanError) {
+                console.error('Error fetching scan history:', scanError);
+              }
+              scanHistory = scans || [];
+            } catch (e) {
+              console.error('Error fetching scan history:', e);
+              scanHistory = [];
+            }
             set({ 
-              selectedTicket: { ...existingTicket, qrCode, validationHistory }, 
+              selectedTicket: { ...existingTicket, qrCode, scanHistory }, 
               isLoading: false 
             });
             return;
@@ -255,8 +204,22 @@ export const useTicketsStore = create<TicketsState>()(
           // Generate fresh QR code
           const qrCode = generateQRCodeData(id);
           
-          // Fetch validation history for this ticket
-          const validationHistory = await get().fetchValidationHistory(id);
+          // Fetch scan history for this ticket
+          let scanHistory = [];
+          try {
+            const { data: scans, error: scanError } = await supabase
+              .from('ticket_scans')
+              .select('*')
+              .eq('ticket_id', id)
+              .order('created_at', { ascending: false });
+            if (scanError) {
+              console.error('Error fetching scan history:', scanError);
+            }
+            scanHistory = scans || [];
+          } catch (e) {
+            console.error('Error fetching scan history:', e);
+            scanHistory = [];
+          }
           
           // Transform to match our Ticket type
           const ticket: Ticket = {
@@ -266,7 +229,7 @@ export const useTicketsStore = create<TicketsState>()(
             eventDate: eventData.date,
             eventTime: eventData.time,
             eventLocation: eventData.location,
-            eventVenue: eventData.location, // Use location as venue
+            eventVenue: eventData.venue || eventData.location,
             eventImage: eventData.image_url,
             ticketType: ticketTypeData.name,
             price: ticketTypeData.price,
@@ -278,7 +241,7 @@ export const useTicketsStore = create<TicketsState>()(
             scannedAt: ticketData.scanned_at,
             scannedBy: ticketData.scanned_by,
             scanLocation: ticketData.scan_location,
-            validationHistory,
+            scanHistory,
             order_id: ticketData.order_id,
             user_id: ticketData.user_id,
             ticket_type_id: ticketData.ticket_type_id,
@@ -291,91 +254,6 @@ export const useTicketsStore = create<TicketsState>()(
         } catch (error) {
           console.error('Error fetching ticket by ID:', error);
           set({ error: handleSupabaseError(error), isLoading: false });
-        }
-      },
-      
-      fetchValidationHistory: async (ticketId: string): Promise<ValidationEvent[]> => {
-        try {
-          console.log('Fetching validation history for ticket:', ticketId);
-          
-          // Try to fetch validation history from ticket_validations table if it exists
-          try {
-            const { data, error } = await supabase
-              .from('ticket_validations')
-              .select('*')
-              .eq('ticket_id', ticketId)
-              .order('created_at', { ascending: true });
-            
-            if (error) {
-              // If table doesn't exist or other error, fall back to ticket data
-              console.log('Error fetching from ticket_validations, using fallback:', error.message);
-              throw error;
-            }
-            
-            if (data && data.length > 0) {
-              return data.map(item => ({
-                id: item.id,
-                ticketId: item.ticket_id,
-                status: item.status,
-                timestamp: item.created_at,
-                success: item.success,
-                location: item.location,
-                operatorId: item.operator_id,
-                operatorName: item.operator_name,
-                deviceId: item.device_id
-              }));
-            }
-          } catch (validationError) {
-            console.log('Validation history table error, using ticket data instead');
-          }
-          
-          // Fetch the ticket to get validation data
-          const { data, error } = await supabase
-            .from('tickets')
-            .select('*')
-            .eq('id', ticketId)
-            .single();
-          
-          if (error) {
-            console.error('Error fetching ticket for validation history:', error);
-            return generateValidationHistory(ticketId);
-          }
-          
-          const validationEvents: ValidationEvent[] = [];
-          
-          // Always add ticket issuance event
-          validationEvents.push({
-            id: '1',
-            ticketId: ticketId,
-            status: 'Billet émis',
-            timestamp: data.created_at,
-            success: true
-          });
-          
-          // Add scan event if available
-          if (data.scanned_at) {
-            validationEvents.push({
-              id: '2',
-              ticketId: ticketId,
-              status: 'Entrée accordée',
-              timestamp: data.scanned_at,
-              success: true,
-              location: data.scan_location,
-              operatorId: data.scanned_by
-            });
-          }
-          
-          // If we have validation events, return them
-          if (validationEvents.length > 0) {
-            return validationEvents;
-          }
-          
-          // If no validation events found, generate default ones
-          return generateValidationHistory(ticketId);
-        } catch (error) {
-          console.error('Error in fetchValidationHistory:', error);
-          // Return default validation events in case of error
-          return generateValidationHistory(ticketId);
         }
       },
       

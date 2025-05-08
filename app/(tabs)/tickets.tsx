@@ -19,15 +19,15 @@ import { Button } from '@/components/Button';
 
 export default function TicketsScreen() {
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
-  const { tickets, isLoading, fetchTickets } = useTicketsStore();
+  const { user, isAuthenticated } = useAuthStore();
+  const { tickets, isLoading, fetchTickets, error } = useTicketsStore();
   const { colors } = useThemeStore();
   
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchTickets();
+    if (user && user.id) {
+      fetchTickets(user.id);
     }
-  }, [isAuthenticated]);
+  }, [user]);
   
   if (!isAuthenticated) {
     return (
@@ -47,6 +47,14 @@ export default function TicketsScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
         <LoadingIndicator fullScreen message="Chargement de vos billets..." />
+      </SafeAreaView>
+    );
+  }
+  
+  if (error) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
+        <Text style={{ color: colors.error, textAlign: 'center', marginTop: 32 }}>{error}</Text>
       </SafeAreaView>
     );
   }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -7,29 +7,13 @@ import {
   TouchableOpacity,
   Image,
   Dimensions,
-  ActivityIndicator,
-  Platform
+  ActivityIndicator
 } from 'react-native';
-import { 
-  Music, 
-  Cpu, 
-  Shirt, 
-  Clapperboard, 
-  BookOpen, 
-  Trophy, 
-  Utensils, 
-  Briefcase,
-  Palette,
-  Laugh,
-  PartyPopper,
-  Tag,
-  ChevronDown,
-  ChevronUp
-} from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useThemeStore } from '@/store/theme-store';
 import { useCategoriesStore } from '@/store/categories-store';
-import { Category } from '@/types';
+import { getIcon } from '@/utils/icon-utils';
+import { colors } from '@/constants/colors';
 
 const { width } = Dimensions.get('window');
 const CATEGORY_WIDTH = (width - 64) / 2;
@@ -50,63 +34,16 @@ export const CategoryList: React.FC<CategoryListProps> = ({
   const { colors } = useThemeStore();
   const { 
     categories, 
-    allCategories,
-    isLoading: storeLoading, 
-    selectedParentCategory,
-    selectParentCategory
+    isLoading: storeLoading,
+    error,
+    fetchCategories 
   } = useCategoriesStore();
   
   const isLoading = externalLoading !== undefined ? externalLoading : storeLoading;
   
-  // State to track expanded categories
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-  
-  const toggleCategoryExpansion = (categoryId: string) => {
-    setExpandedCategories(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(categoryId)) {
-        newSet.delete(categoryId);
-      } else {
-        newSet.add(categoryId);
-      }
-      return newSet;
-    });
-    
-    // Also select this as the parent category
-    selectParentCategory(categoryId);
-  };
-  
-  const getIcon = (iconName: string, isSelected: boolean) => {
-    const color = isSelected ? colors.white : colors.textSecondary;
-    const size = 20;
-    
-    switch (iconName) {
-      case 'music':
-        return <Music size={size} color={color} />;
-      case 'cpu':
-        return <Cpu size={size} color={color} />;
-      case 'shirt':
-        return <Shirt size={size} color={color} />;
-      case 'clapperboard':
-        return <Clapperboard size={size} color={color} />;
-      case 'book-open':
-        return <BookOpen size={size} color={color} />;
-      case 'trophy':
-        return <Trophy size={size} color={color} />;
-      case 'utensils':
-        return <Utensils size={size} color={color} />;
-      case 'briefcase':
-        return <Briefcase size={size} color={color} />;
-      case 'palette':
-        return <Palette size={size} color={color} />;
-      case 'laugh':
-        return <Laugh size={size} color={color} />;
-      case 'party-popper':
-        return <PartyPopper size={size} color={color} />;
-      default:
-        return <Tag size={size} color={color} />;
-    }
-  };
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
   
   // Background images for enhanced categories
   const getCategoryImage = (category: string) => {
@@ -159,6 +96,16 @@ export const CategoryList: React.FC<CategoryListProps> = ({
     );
   }
   
+  if (error) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={[styles.errorText, { color: colors.error }]}>
+          {error}
+        </Text>
+      </View>
+    );
+  }
+  
   // Check if categories array exists and has items
   if (!categories || categories.length === 0) {
     return (
@@ -184,11 +131,7 @@ export const CategoryList: React.FC<CategoryListProps> = ({
               styles.enhancedAllItem,
               !selectedCategory && { borderWidth: 2, borderColor: colors.secondary }
             ]}
-            onPress={() => {
-              onSelectCategory(null);
-              selectParentCategory(null);
-              setExpandedCategories(new Set());
-            }}
+            onPress={() => onSelectCategory(null)}
           >
             <LinearGradient
               colors={[colors.primary, colors.primaryLight]}
@@ -207,81 +150,32 @@ export const CategoryList: React.FC<CategoryListProps> = ({
           
           {categories.map((category) => {
             const isSelected = selectedCategory === category.name;
-            const isExpanded = expandedCategories.has(category.id);
-            const hasChildren = category.children && category.children.length > 0;
             
             return (
-              <View key={category.id} style={styles.categoryWithChildren}>
-                <TouchableOpacity
-                  style={[
-                    styles.enhancedCategoryItem,
-                    isSelected && { borderWidth: 2, borderColor: colors.secondary }
-                  ]}
-                  onPress={() => {
-                    if (hasChildren) {
-                      toggleCategoryExpansion(category.id);
-                    } else {
-                      onSelectCategory(category.name);
-                    }
+              <TouchableOpacity
+                key={category.id}
+                style={[
+                  styles.enhancedCategoryItem,
+                  isSelected && { borderWidth: 2, borderColor: colors.secondary }
+                ]}
+                onPress={() => onSelectCategory(category.name)}
+              >
+                <Image
+                  source={{ uri: getCategoryImage(category.name) }}
+                  style={styles.categoryImage}
+                  onError={(error) => {
+                    console.warn(`Failed to load image for category ${category.name}:`, error.nativeEvent.error);
                   }}
+                />
+                <LinearGradient
+                  colors={['transparent', 'rgba(0,0,0,0.8)']}
+                  style={styles.enhancedGradient}
                 >
-                  <Image
-                    source={{ uri: getCategoryImage(category.name) }}
-                    style={styles.categoryImage}
-                  />
-                  <LinearGradient
-                    colors={['transparent', 'rgba(0,0,0,0.7)']}
-                    style={styles.categoryGradient}
-                  >
-                    <View style={styles.categoryContent}>
-                      {getIcon(category.icon, isSelected)}
-                      <Text 
-                        style={[
-                          styles.enhancedCategoryText,
-                          { color: colors.white }
-                        ]}
-                      >
-                        {category.name}
-                      </Text>
-                      {hasChildren && (
-                        isExpanded ? 
-                          <ChevronUp size={16} color={colors.white} /> : 
-                          <ChevronDown size={16} color={colors.white} />
-                      )}
-                    </View>
-                  </LinearGradient>
-                </TouchableOpacity>
-                
-                {/* Subcategories */}
-                {isExpanded && hasChildren && (
-                  <View style={styles.subcategoriesContainer}>
-                    {category.children.map(subcategory => {
-                      const isSubcategorySelected = selectedCategory === subcategory.name;
-                      
-                      return (
-                        <TouchableOpacity
-                          key={subcategory.id}
-                          style={[
-                            styles.subcategoryItem,
-                            { backgroundColor: isSubcategorySelected ? colors.primary : colors.cardLight },
-                          ]}
-                          onPress={() => onSelectCategory(subcategory.name)}
-                        >
-                          {getIcon(subcategory.icon, isSubcategorySelected)}
-                          <Text 
-                            style={[
-                              styles.subcategoryText,
-                              { color: isSubcategorySelected ? colors.white : colors.textSecondary }
-                            ]}
-                          >
-                            {subcategory.name}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
+                  <Text style={styles.enhancedCategoryText}>
+                    {category.name}
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
             );
           })}
         </ScrollView>
@@ -289,244 +183,184 @@ export const CategoryList: React.FC<CategoryListProps> = ({
     );
   }
   
-  // Horizontal scrolling version (non-enhanced)
   return (
-    <View style={[styles.outerContainer, { backgroundColor: colors.background }]}>
-      <View style={styles.headerContainer}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Catégories</Text>
-      </View>
-      
-      {/* Main categories */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.container}
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={[
+        styles.container,
+        { paddingHorizontal: 20 }
+      ]}
+      style={[
+        styles.scrollView,
+        { marginVertical: 8 }
+      ]}
+      decelerationRate="normal"
+      snapToAlignment="center"
+      snapToInterval={120}
+      scrollEventThrottle={16}
+    >
+      <TouchableOpacity
+        style={[
+          styles.categoryItem,
+          {
+            backgroundColor: !selectedCategory ? colors.primary : colors.card,
+            minWidth: 100,
+          },
+          !selectedCategory && styles.selectedCategory
+        ]}
+        onPress={() => onSelectCategory(null)}
       >
-        <TouchableOpacity
+        <Text 
           style={[
-            styles.categoryItem,
-            { backgroundColor: colors.cardLight },
-            !selectedCategory && !selectedParentCategory && { backgroundColor: colors.primary }
+            styles.categoryText,
+            { color: !selectedCategory ? colors.white : colors.text }
           ]}
-          onPress={() => {
-            onSelectCategory(null);
-            selectParentCategory(null);
-          }}
+          numberOfLines={1}
         >
-          <Text 
-            style={[
-              styles.categoryText,
-              { color: !selectedCategory && !selectedParentCategory ? colors.white : colors.textSecondary }
-            ]}
-          >
-            Tous
-          </Text>
-        </TouchableOpacity>
+          Tous
+        </Text>
+      </TouchableOpacity>
+
+      {[
+        { id: '1', name: 'Concerts', icon: 'music' },
+        { id: '2', name: 'Sport', icon: 'trophy' },
+        { id: '3', name: 'Festivals', icon: 'party-popper' },
+        { id: '4', name: 'Cinema', icon: 'clapperboard' }
+      ].map((category) => {
+        const isSelected = selectedCategory === category.name;
+        const Icon = getIcon(category.icon);
         
-        {categories.map((category) => {
-          const isSelected = selectedParentCategory === category.id;
-          const hasChildren = category.children && category.children.length > 0;
-          
-          return (
-            <TouchableOpacity
-              key={category.id}
+        return (
+          <TouchableOpacity
+            key={category.id}
+            style={[
+              styles.categoryItem,
+              {
+                backgroundColor: isSelected ? colors.primary : colors.card,
+                minWidth: 100,
+              },
+              isSelected && styles.selectedCategory
+            ]}
+            onPress={() => onSelectCategory(category.name)}
+          >
+            <Icon 
+              size={20} 
+              color={isSelected ? colors.white : colors.text} 
+              style={styles.categoryIcon}
+            />
+            <Text 
               style={[
-                styles.categoryItem,
-                { backgroundColor: isSelected ? colors.primary : colors.cardLight }
+                styles.categoryText,
+                { color: isSelected ? colors.white : colors.text }
               ]}
-              onPress={() => {
-                if (hasChildren) {
-                  toggleCategoryExpansion(category.id);
-                  onSelectCategory(null); // Clear specific category selection
-                } else {
-                  onSelectCategory(category.name);
-                  selectParentCategory(null);
-                }
-              }}
+              numberOfLines={1}
             >
-              {getIcon(category.icon, isSelected)}
-              <Text 
-                style={[
-                  styles.categoryText,
-                  { color: isSelected ? colors.white : colors.textSecondary }
-                ]}
-              >
-                {category.name}
-              </Text>
-              {hasChildren && (
-                isSelected ? 
-                  <ChevronUp size={16} color={isSelected ? colors.white : colors.textSecondary} /> : 
-                  <ChevronDown size={16} color={isSelected ? colors.white : colors.textSecondary} />
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-      
-      {/* Subcategories */}
-      {selectedParentCategory && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={[styles.container, styles.subcategoriesScroll]}
-        >
-          {categories.find(c => c.id === selectedParentCategory)?.children?.map((subcategory) => {
-            const isSelected = selectedCategory === subcategory.name;
-            
-            return (
-              <TouchableOpacity
-                key={subcategory.id}
-                style={[
-                  styles.subcategoryItem,
-                  { backgroundColor: isSelected ? colors.primary : colors.cardLight }
-                ]}
-                onPress={() => onSelectCategory(subcategory.name)}
-              >
-                {getIcon(subcategory.icon, isSelected)}
-                <Text 
-                  style={[
-                    styles.subcategoryText,
-                    { color: isSelected ? colors.white : colors.textSecondary }
-                  ]}
-                >
-                  {subcategory.name}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      )}
-    </View>
+              {category.name}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  outerContainer: {
-    paddingBottom: 8,
-  },
-  headerContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 4,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
+  scrollView: {
+    flexGrow: 0,
+    flexShrink: 0,
   },
   container: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  subcategoriesScroll: {
-    paddingTop: 0,
-    paddingBottom: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 4,
   },
   loadingContainer: {
     padding: 16,
     alignItems: 'center',
+    justifyContent: 'center'
   },
   errorText: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 14
   },
   categoryItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    marginRight: 12,
+    paddingVertical: 12,
+    borderRadius: 24,
+    gap: 8,
+    elevation: 3,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    minWidth: 120,
+  },
+  selectedCategory: {
+    elevation: 4,
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+  },
+  categoryIcon: {
+    marginRight: 4,
   },
   categoryText: {
-    marginLeft: 8,
-    fontWeight: '500',
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
-  subcategoryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 16,
-    marginRight: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
-    elevation: 1,
-  },
-  subcategoryText: {
-    marginLeft: 6,
-    fontWeight: '500',
-    fontSize: 13,
-  },
-  // Enhanced styles
   enhancedContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    padding: 16
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 16
   },
   enhancedGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    gap: 16
   },
   enhancedAllItem: {
     width: '100%',
     height: 60,
     borderRadius: 12,
-    marginBottom: 16,
-    overflow: 'hidden',
+    overflow: 'hidden'
   },
   enhancedAllGradient: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   enhancedAllText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  categoryWithChildren: {
-    width: CATEGORY_WIDTH,
-    marginBottom: 16,
+    fontSize: 16,
+    fontWeight: '600'
   },
   enhancedCategoryItem: {
-    width: '100%',
-    height: 100,
+    width: CATEGORY_WIDTH,
+    height: CATEGORY_WIDTH,
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: 'hidden'
   },
   categoryImage: {
     width: '100%',
-    height: '100%',
+    height: '100%'
   },
-  categoryGradient: {
-    ...StyleSheet.absoluteFillObject,
+  enhancedGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '50%',
     justifyContent: 'flex-end',
-  },
-  categoryContent: {
-    padding: 12,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
+    padding: 12
   },
   enhancedCategoryText: {
+    color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '600',
-    marginHorizontal: 4,
-    textAlign: 'center',
-  },
-  subcategoriesContainer: {
-    marginTop: 8,
-    width: '100%',
-  },
+    fontWeight: '600'
+  }
 });

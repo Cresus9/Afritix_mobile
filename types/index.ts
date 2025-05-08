@@ -5,31 +5,29 @@ export interface Event {
   date: string;
   time: string;
   location: string;
-  venue?: string;
   image_url: string;
-  image?: string; // Alias for image_url for backward compatibility
   price: number;
   currency: string;
-  capacity?: number;
-  tickets_sold?: number;
-  status?: string;
-  featured?: boolean;
-  created_at?: string;
-  updated_at?: string;
-  avg_rating?: number;
-  review_count?: number;
-  venue_layout_id?: string;
-  coordinates?: any;
-  organizer_id?: string;
+  capacity: number;
+  tickets_sold: number;
+  status: string;
+  featured: boolean;
+  created_at: string;
+  updated_at: string;
+  avg_rating: number;
+  review_count: number;
+  venue_layout_id: string;
+  coordinates: Record<string, any>;
+  organizer_id: string;
+  // Frontend-specific fields for backward compatibility
+  venue?: string;
+  image?: string;
+  categories?: string[];
   category?: string;
-  organizer?: string;
+  subcategory?: string;
   ticketsAvailable?: number;
-  ticketsSold?: number;
-  city?: string;
   isFeatured?: boolean;
   availableTickets?: number;
-  categories?: string[];
-  subcategory?: string;
 }
 
 export interface Ticket {
@@ -58,6 +56,7 @@ export interface Ticket {
   seat_id?: string;
   transfer_id?: string;
   updated_at?: string;
+  scanHistory?: any[];
 }
 
 export interface ValidationEvent {
@@ -89,9 +88,13 @@ export interface TicketTransfer {
 export interface Category {
   id: string;
   name: string;
+  description: string;
   icon: string;
-  parent_id?: string | null;
+  parent_id?: string;
   children?: Category[];
+  subcategories?: string[];
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface User {
@@ -171,3 +174,9 @@ export interface NewsletterSubscription {
     news?: boolean;
   };
 }
+
+const formatDate = (dateString: string) => {
+  if (!dateString) return 'Date inconnue';
+  const date = new Date(dateString);
+  return isNaN(date.getTime()) ? 'Date inconnue' : date.toLocaleDateString('fr-FR');
+};

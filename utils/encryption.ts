@@ -118,81 +118,66 @@ export function generateUUID(): string {
  */
 export function generateQRCodeData(ticketId: string): string {
   try {
-    // Ensure ticketId is a valid UUID format
-    if (!ticketId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-      console.warn('Invalid ticketId format, generating a valid UUID');
-      ticketId = generateUUID();
-    }
-    
-    // Créer un objet de données avec l'ID du billet et l'horodatage
+    // Create a standardized data object that matches the web version
     const data = {
       id: ticketId,
       timestamp: Date.now(),
-      nonce: getRandomBytes(8) // Use our custom random bytes generator
+      type: 'ticket',
+      version: '1.0'
     };
     
-    // Convertir en chaîne
+    // Convert to string in a consistent format
     const dataString = JSON.stringify(data);
     
-    // Chiffrer les données (dans une vraie application, utilisez une clé sécurisée des variables d'environnement)
-    const secretKey = DEFAULT_ENCRYPTION_KEY; // Ceci serait une variable d'environnement en production
+    // Use the same encryption key and method as web version
+    const secretKey = DEFAULT_ENCRYPTION_KEY;
     
     try {
-      const encrypted = CryptoJS.AES.encrypt(dataString, secretKey).toString();
-      return encrypted;
+      // Use consistent encryption settings
+      const encrypted = CryptoJS.AES.encrypt(dataString, secretKey, {
+        mode: CryptoJS.mode.CBC,
+        padding: CryptoJS.pad.Pkcs7
+      }).toString();
+      
+      // Format the final QR code data exactly like web version
+      return `AFX1:${encrypted}`;
     } catch (encryptError) {
-      console.error('AES encryption failed, using fallback:', encryptError);
-      // Fallback to a simpler encryption if AES fails
-      return `${ticketId}-${Date.now()}-${getRandomBytes(4)}`;
+      console.error('AES encryption failed:', encryptError);
+      // Use the same fallback format as web version
+      return `AFX0:${ticketId}:${Date.now()}`;
     }
   } catch (error) {
     console.error('Error generating QR code data:', error);
-    // Fallback to a simpler encryption if CryptoJS fails
-    const fallbackData = `${generateUUID()}-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
-    return fallbackData;
+    // Use the same fallback format as web version
+    return `AFX0:${ticketId}:${Date.now()}`;
   }
 }
 
 /**
  * Décode et valide un code QR
- * EXACT MATCH to web implementation
- * @param qrData Les données QR code chiffrées
- * @returns Les données de billet déchiffrées ou null si invalide
+ * Matches web implementation exactly
  */
 export function decodeQRData(qrData: string): { id: string; timestamp: number } | null {
   try {
-    // Check if this is our fallback format
-    if (qrData.includes('-') && !qrData.includes('{')) {
-      const parts = qrData.split('-');
-      if (parts.length >= 2) {
-        const id = parts[0];
-        const timestamp = parseInt(parts[1], 10);
-        
-        // Validate timestamp (60 seconds validity)
-        const now = Date.now();
-        if (now - timestamp > 60000) {
-          return null;
-        }
-        
-        return { id, timestamp };
-      }
-      return null;
-    }
-    
-    // Regular decryption
-    try {
+    // Check for prefix to determine format
+    if (qrData.startsWith('AFX1:')) {
+      // Encrypted format
+      const encrypted = qrData.substring(5); // Remove 'AFX1:' prefix
       const secretKey = DEFAULT_ENCRYPTION_KEY;
-      const decrypted = CryptoJS.AES.decrypt(qrData, secretKey).toString(CryptoJS.enc.Utf8);
       
-      // Analyser le JSON
+      const decrypted = CryptoJS.AES.decrypt(encrypted, secretKey, {
+        mode: CryptoJS.mode.CBC,
+        padding: CryptoJS.pad.Pkcs7
+      }).toString(CryptoJS.enc.Utf8);
+      
       const data = JSON.parse(decrypted);
       
-      // Valider les données
-      if (!data.id || !data.timestamp) {
+      // Validate the data format
+      if (!data.id || !data.timestamp || data.type !== 'ticket' || data.version !== '1.0') {
         return null;
       }
       
-      // Vérifier si le code QR a expiré (validité de 60 secondes)
+      // Verify timestamp (60 seconds validity)
       const now = Date.now();
       if (now - data.timestamp > 60000) {
         return null;
@@ -202,50 +187,26 @@ export function decodeQRData(qrData: string): { id: string; timestamp: number } 
         id: data.id,
         timestamp: data.timestamp
       };
-    } catch (decryptError) {
-      console.error('AES decryption failed, trying fallback format:', decryptError);
-      // Try fallback format if decryption fails
-      if (qrData.includes('-')) {
-        const parts = qrData.split('-');
-        if (parts.length >= 2) {
-          const id = parts[0];
-          const timestamp = parseInt(parts[1], 10);
-          
-          // Validate timestamp (60 seconds validity)
-          const now = Date.now();
-          if (now - timestamp > 60000) {
-            return null;
-          }
-          
-          return { id, timestamp };
-        }
+    } else if (qrData.startsWith('AFX0:')) {
+      // Fallback format
+      const parts = qrData.split(':');
+      if (parts.length !== 3) return null;
+      
+      const id = parts[1];
+      const timestamp = parseInt(parts[2], 10);
+      
+      // Verify timestamp (60 seconds validity)
+      const now = Date.now();
+      if (now - timestamp > 60000) {
+        return null;
       }
-      return null;
+      
+      return { id, timestamp };
     }
+    
+    return null;
   } catch (error) {
     console.error('Error decoding QR data:', error);
-    
-    // Try to handle fallback format if decryption fails
-    try {
-      if (qrData.includes('-')) {
-        const parts = qrData.split('-');
-        if (parts.length >= 2) {
-          const id = parts[0];
-          const timestamp = parseInt(parts[1], 10);
-          
-          // Validate timestamp (60 seconds validity)
-          const now = Date.now();
-          if (now - timestamp > 60000) {
-            return null;
-          }
-          
-          return { id, timestamp };
-        }
-      }
-    } catch (fallbackError) {
-      console.error('Fallback decoding also failed:', fallbackError);
-    }
-    
     return null;
   }
 }

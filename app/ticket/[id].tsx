@@ -44,6 +44,9 @@ import { Button } from '@/components/Button';
 import { LoadingIndicator } from '@/components/LoadingIndicator';
 import { verifyQRCodeData } from '@/utils/encryption';
 import { generateTicketPDF } from '@/utils/pdf-generator';
+import { useAuthStore } from '@/store/auth-store';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 
 // Default fallback image for tickets without event images
 const DEFAULT_EVENT_IMAGE = 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?q=80&w=2070';
@@ -75,6 +78,15 @@ export default function TicketDetailScreen() {
   
   // Animation for the ticket
   const ticketAnimation = useRef(new Animated.Value(0)).current;
+  
+  const user = useAuthStore(state => state.user);
+  const fetchTickets = useTicketsStore(state => state.fetchTickets);
+  
+  useEffect(() => {
+    if (user && user.id) {
+      fetchTickets(user.id);
+    }
+  }, [user]);
   
   useEffect(() => {
     if (id) {
@@ -271,6 +283,54 @@ export default function TicketDetailScreen() {
     }
   };
   
+  const handleDownloadPDF = async () => {
+    if (!selectedTicket) {
+      Alert.alert('Erreur', 'Aucun billet sélectionné.');
+      return;
+    }
+    try {
+      const html = `
+        <html>
+          <body style="font-family: Arial, sans-serif; padding: 24px; background: #f8f9fa;">
+            <div style="border-radius: 24px; overflow: hidden; border: 1px solid #eee; max-width: 400px; margin: auto; background: #fff;">
+              <div style="background: #b41e1e; color: #fff; padding: 24px 24px 12px 24px;">
+                <h1 style="margin: 0; font-size: 2em;">${selectedTicket.eventTitle}</h1>
+                <p style="margin: 0; font-size: 1.2em;">${formatDate(selectedTicket.eventDate)}</p>
+              </div>
+              <div style="padding: 24px;">
+                <p><strong>Type:</strong> ${selectedTicket.ticketType}</p>
+                <p><strong>Date:</strong> ${formatDate(selectedTicket.eventDate)}</p>
+                <p><strong>Heure:</strong> ${selectedTicket.eventTime || ''}</p>
+                <p><strong>Lieu:</strong> ${selectedTicket.eventVenue}</p>
+                <p><strong>Statut:</strong> ${selectedTicket.status}</p>
+                <p><strong>ID Billet:</strong> #${selectedTicket.id.substring(0, 8).toUpperCase()}</p>
+                <div style="margin: 16px 0;">
+                  <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${selectedTicket.qrCode}" style="width: 200px; height: 200px;" />
+                </div>
+                <hr />
+                <h3>Historique des scans</h3>
+                ${selectedTicket.scanHistory && selectedTicket.scanHistory.length > 0 ?
+                  selectedTicket.scanHistory.map(scan => `
+                    <div style='margin-bottom: 8px;'>
+                      <span>📅 ${scan.created_at ? new Date(scan.created_at).toLocaleString() : 'Date inconnue'}</span><br/>
+                      ${scan.scan_location ? `<span>📍 Lieu: ${scan.scan_location}</span><br/>` : ''}
+                      ${scan.scanned_by ? `<span>👤 Scanné par: ${scan.scanned_by}</span>` : ''}
+                    </div>
+                  `).join('') :
+                  `<span style='color: #888; font-style: italic;'>Aucun historique de scan pour ce billet.</span>`
+                }
+              </div>
+            </div>
+          </body>
+        </html>
+      `;
+      const { uri } = await Print.printToFileAsync({ html });
+      await Sharing.shareAsync(uri);
+    } catch (error) {
+      Alert.alert('Erreur', 'Impossible de générer le PDF du billet.');
+    }
+  };
+  
   const handleTransfer = () => {
     setTransferModalVisible(true);
   };
@@ -372,21 +432,16 @@ export default function TicketDetailScreen() {
   };
   
   // Get status badge color and text
-  const getStatusBadge = () => {
-    if (!selectedTicket || !selectedTicket.status) {
-      return { color: colors.success + '33', text: 'Valide' };
-    }
-    
-    switch (selectedTicket.status) {
-      case 'USED':
-        return { color: colors.textMuted + '33', text: 'Utilisé' };
-      case 'CANCELLED':
-        return { color: colors.error + '33', text: 'Annulé' };
-      case 'TRANSFERRED':
-        return { color: colors.info + '33', text: 'Transféré' };
+  const getStatusBadge = (status: string | undefined) => {
+    switch (status) {
       case 'VALID':
+        return <Text style={{ backgroundColor: '#4cd964', color: '#fff', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, fontWeight: 'bold', alignSelf: 'flex-start', marginBottom: 8 }}>Valide pour l'entrée</Text>;
+      case 'USED':
+        return <Text style={{ backgroundColor: '#ff9500', color: '#fff', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, fontWeight: 'bold', alignSelf: 'flex-start', marginBottom: 8 }}>Billet déjà utilisé</Text>;
+      case 'CANCELLED':
+        return <Text style={{ backgroundColor: '#ff3b30', color: '#fff', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, fontWeight: 'bold', alignSelf: 'flex-start', marginBottom: 8 }}>Billet annulé</Text>;
       default:
-        return { color: colors.success + '33', text: 'Valide' };
+        return <Text style={{ backgroundColor: '#ccc', color: '#333', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, fontWeight: 'bold', alignSelf: 'flex-start', marginBottom: 8 }}>Statut inconnu</Text>;
     }
   };
   
@@ -426,7 +481,7 @@ export default function TicketDetailScreen() {
     outputRange: [0, 1],
   });
   
-  const statusBadge = getStatusBadge();
+  const statusBadge = getStatusBadge(selectedTicket.status);
   const ticketId = selectedTicket.id.substring(0, 8).toUpperCase();
   const ticketTypeColor = getTicketTypeColor();
   
@@ -583,7 +638,6 @@ export default function TicketDetailScreen() {
                     size={200} 
                     color="#000000"
                     backgroundColor="#FFFFFF"
-                    refreshInterval={qrRefreshEnabled ? QR_REFRESH_INTERVAL : undefined}
                     showVerification={false}
                   />
                   
@@ -609,6 +663,32 @@ export default function TicketDetailScreen() {
             </View>
           </ViewShot>
           
+          {/* Scan History Section */}
+          <View style={{ marginTop: 24 }}>
+            <Text style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 8 }}>Historique des scans</Text>
+            {selectedTicket.scanHistory && selectedTicket.scanHistory.length > 0 ? (
+              selectedTicket.scanHistory.map((scan, idx) => (
+                <View key={scan.id || idx} style={{ marginBottom: 8, padding: 8, backgroundColor: '#f5f5f5', borderRadius: 8 }}>
+                  <Text style={{ fontSize: 14 }}>
+                    📅 {scan.created_at ? new Date(scan.created_at).toLocaleString() : 'Date inconnue'}
+                  </Text>
+                  {scan.scan_location && (
+                    <Text style={{ fontSize: 14 }}>
+                      📍 Lieu: {scan.scan_location}
+                    </Text>
+                  )}
+                  {scan.scanned_by && (
+                    <Text style={{ fontSize: 14 }}>
+                      👤 Scanné par: {scan.scanned_by}
+                    </Text>
+                  )}
+                </View>
+              ))
+            ) : (
+              <Text style={{ color: '#888', fontStyle: 'italic' }}>Aucun historique de scan pour ce billet.</Text>
+            )}
+          </View>
+          
           {/* Additional sections */}
           {/* Validation history collapsible section */}
           <View style={styles.collapsibleSection}>
@@ -624,7 +704,7 @@ export default function TicketDetailScreen() {
             
             {showValidationHistory && (
               <View style={styles.validationHistory}>
-                {selectedTicket.validationHistory && selectedTicket.validationHistory.length > 0 ? (
+                {Array.isArray(selectedTicket.validationHistory) && selectedTicket.validationHistory.length > 0 ? (
                   selectedTicket.validationHistory.map((item, index) => (
                     <View key={index} style={styles.validationItem}>
                       {item.success ? (
@@ -698,23 +778,29 @@ export default function TicketDetailScreen() {
               • Pour toute question, veuillez contacter support@afritix.com.
             </Text>
           </View>
+          
+          {/* Ticket Status Badge */}
+          {getStatusBadge(selectedTicket.status)}
+          {/* If ticket is used, show scanned date */}
+          {selectedTicket.status === 'USED' && selectedTicket.scannedAt && (
+            <Text style={{ color: '#ff9500', fontWeight: '500', marginBottom: 8 }}>
+              Scanné le: {formatDateTime(selectedTicket.scannedAt)}
+            </Text>
+          )}
         </Animated.View>
       </ScrollView>
       
       <View style={styles.footer}>
         <Button
-          title="Télécharger le billet"
-          onPress={showDownloadOptions}
-          style={styles.downloadButton}
-          icon={<Download size={20} color={colors.text} />}
-          loading={isDownloading}
-          disabled={isDownloading || selectedTicket.status === 'TRANSFERRED' || selectedTicket.status === 'CANCELLED'}
+          title="Télécharger"
+          onPress={handleDownloadPDF}
+          style={[styles.downloadButton, { marginTop: 12 }]}
         />
         <Button
-          title="Transférer le billet"
+          title="Transférer"
           onPress={handleTransfer}
           variant="outline"
-          style={styles.transferButton}
+          style={[styles.transferButton, { marginTop: 12 }]}
           icon={<Send size={20} color={colors.primary} />}
           disabled={
             isTransferring || 
@@ -724,65 +810,6 @@ export default function TicketDetailScreen() {
           }
         />
       </View>
-      
-      {/* Download Options Modal */}
-      <Modal
-        visible={downloadModalVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setDownloadModalVisible(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>
-                Format de téléchargement
-              </Text>
-              <TouchableOpacity onPress={() => setDownloadModalVisible(false)}>
-                <X size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-            
-            <Text style={[styles.modalDescription, { color: colors.textSecondary }]}>
-              Choisissez le format dans lequel vous souhaitez télécharger votre billet.
-            </Text>
-            
-            <View style={styles.downloadOptions}>
-              <TouchableOpacity 
-                style={[styles.downloadOption, { borderColor: colors.border }]}
-                onPress={() => handleDownload('image')}
-              >
-                <Image 
-                  source={{ uri: 'https://images.unsplash.com/photo-1598550476439-6847785fcea6?q=80&w=2070' }} 
-                  style={styles.downloadOptionIcon}
-                />
-                <Text style={[styles.downloadOptionTitle, { color: colors.text }]}>Image</Text>
-                <Text style={[styles.downloadOptionDescription, { color: colors.textSecondary }]}>
-                  Format PNG facile à partager
-                </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.downloadOption, { borderColor: colors.border }]}
-                onPress={() => handleDownload('pdf')}
-              >
-                <FileText size={48} color={colors.primary} style={styles.downloadOptionIcon} />
-                <Text style={[styles.downloadOptionTitle, { color: colors.text }]}>PDF</Text>
-                <Text style={[styles.downloadOptionDescription, { color: colors.textSecondary }]}>
-                  Document PDF officiel
-                </Text>
-              </TouchableOpacity>
-            </View>
-            
-            <Button
-              title="Annuler"
-              onPress={() => setDownloadModalVisible(false)}
-              variant="outline"
-              style={styles.cancelButton}
-            />
-          </View>
-        </View>
-      </Modal>
       
       {/* Transfer Modal */}
       <Modal
