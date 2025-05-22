@@ -23,7 +23,6 @@ export default function LoginScreen() {
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Clear error when component mounts
   useEffect(() => {
@@ -35,21 +34,9 @@ export default function LoginScreen() {
       Alert.alert('Erreur', 'Veuillez remplir tous les champs');
       return;
     }
-    
-    setIsSubmitting(true);
-    try {
-      console.log('Attempting login with:', email);
-      await login(email, password);
-      
-      // Only navigate if no error occurred
-      if (!useAuthStore.getState().error) {
-        router.replace('/');
-      }
-    } catch (error) {
-      console.error('Login error in component:', error);
-      // Error is handled by the store
-    } finally {
-      setIsSubmitting(false);
+    await login(email, password);
+    if (!useAuthStore.getState().error) {
+      router.replace('/');
     }
   };
   
@@ -98,7 +85,7 @@ export default function LoginScreen() {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
-                editable={!isSubmitting}
+                editable={!isLoading}
               />
             </View>
             
@@ -117,13 +104,13 @@ export default function LoginScreen() {
                 placeholder="Entrez votre mot de passe"
                 placeholderTextColor={colors.textMuted}
                 secureTextEntry
-                editable={!isSubmitting}
+                editable={!isLoading}
               />
             </View>
             
             <TouchableOpacity 
               style={styles.forgotPassword}
-              disabled={isSubmitting}
+              disabled={isLoading}
               onPress={() => router.push('/auth/forgot-password')}
             >
               <Text style={styles.forgotPasswordText}>Mot de passe oublié?</Text>
@@ -132,8 +119,8 @@ export default function LoginScreen() {
             <Button
               title="Se connecter"
               onPress={handleLogin}
-              loading={isLoading || isSubmitting}
-              disabled={isLoading || isSubmitting}
+              loading={isLoading}
+              disabled={isLoading}
               fullWidth
               style={styles.loginButton}
             />
@@ -142,7 +129,7 @@ export default function LoginScreen() {
               <Text style={styles.registerText}>Vous n&apos;avez pas de compte?</Text>
               <TouchableOpacity 
                 onPress={() => router.push('/auth/register')}
-                disabled={isSubmitting}
+                disabled={isLoading}
               >
                 <Text style={styles.registerLink}>S&apos;inscrire</Text>
               </TouchableOpacity>

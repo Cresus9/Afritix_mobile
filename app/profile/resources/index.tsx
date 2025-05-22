@@ -20,25 +20,25 @@ export default function ResourcesScreen() {
       id: 'terms',
       title: "Conditions d'utilisation",
       icon: <FileText size={20} color={colors.textSecondary} />,
-      route: '/profile/resources/terms',
+      route: 'terms',
     },
     {
       id: 'privacy',
       title: 'Politique de confidentialité',
       icon: <Shield size={20} color={colors.textSecondary} />,
-      route: '/profile/resources/privacy',
+      route: 'privacy',
     },
     {
       id: 'about',
       title: "À propos d'AfriTix",
       icon: <Info size={20} color={colors.textSecondary} />,
-      route: '/profile/resources/about',
+      route: 'about',
     },
     {
       id: 'guides',
       title: "Guides d'utilisation",
       icon: <BookOpen size={20} color={colors.textSecondary} />,
-      route: '/profile/resources/guides',
+      route: 'guides',
     }
   ];
   
@@ -65,7 +65,7 @@ export default function ResourcesScreen() {
                   borderBottomWidth: index < resources.length - 1 ? 1 : 0
                 }
               ]}
-              onPress={() => router.push(resource.route)}
+              onPress={() => router.push(`/profile/resources/${resource.route}`)}
             >
               {resource.icon}
               <Text style={[styles.menuItemText, { color: colors.text }]}>{resource.title}</Text>

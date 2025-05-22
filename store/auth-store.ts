@@ -83,82 +83,108 @@ export const useAuthStore = create<AuthState>()(
       
       login: async (email, password) => {
         set({ isLoading: true, error: null });
+        const timeout = setTimeout(() => {
+          console.log('[LOGIN] Timeout - setting isLoading to false');
+          set({ isLoading: false, error: 'La connexion a expiré. Veuillez réessayer.' });
+        }, 10000); // 10 seconds
+
         try {
-          console.log('Login attempt with email:', email);
-          
+          console.log('[LOGIN] Start - email:', email);
           if (!email || !password) {
+            console.log('[LOGIN] Missing email or password');
             throw new Error('Veuillez remplir tous les champs');
           }
-          
+
+          // First check if there's an existing session
+          const { data: { session: existingSession } } = await supabase.auth.getSession();
+          if (existingSession) {
+            console.log('[LOGIN] Existing session found, signing out first');
+            await supabase.auth.signOut();
+          }
+
+          console.log('[LOGIN] Calling supabase.auth.signInWithPassword');
           const { data, error } = await supabase.auth.signInWithPassword({
             email,
             password,
           });
-          
+
           if (error) {
-            console.error('Supabase login error:', JSON.stringify(error, null, 2));
+            console.error('[LOGIN] Supabase login error:', JSON.stringify(error, null, 2));
             throw error;
           }
-          
+
           if (!data.user) {
+            console.log('[LOGIN] No user returned from Supabase');
             throw new Error('Aucun utilisateur trouvé avec ces identifiants');
           }
-          
-          console.log('Login successful, user:', data.user?.id);
-          
-          // Fetch user profile data from profiles table
+
+          // Verify the session was created
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) {
+            console.error('[LOGIN] No session created after successful login');
+            throw new Error('Erreur de création de session');
+          }
+
+          console.log('[LOGIN] Session verified:', {
+            userId: session.user.id,
+            expiresAt: session.expires_at,
+            accessToken: session.access_token ? 'present' : 'missing',
+            refreshToken: session.refresh_token ? 'present' : 'missing'
+          });
+
+          // Fetch user profile
+          console.log('[LOGIN] Fetching user profile');
           const { data: profileData, error: profileError } = await supabase
             .from('profiles')
             .select('*')
-            .eq('id', data.user.id)
+            .eq('user_id', data.user.id)
             .maybeSingle();
-          
+
           if (profileError) {
-            console.error('Profile fetch error:', JSON.stringify(profileError, null, 2));
+            console.error('[LOGIN] Profile fetch error:', JSON.stringify(profileError, null, 2));
             // Continue with basic user info
-            const user: User = {
+            const user = {
               id: data.user.id,
               name: data.user.email?.split('@')[0] || 'User',
               email: data.user.email || '',
               avatar: null,
             };
-            
+            console.log('[LOGIN] Setting user state with basic info');
             set({ user, isAuthenticated: true, isLoading: false });
+            clearTimeout(timeout);
             return;
           }
-          
-          // If profile doesn't exist, create one
+
           if (!profileData) {
-            console.log('Profile not found, creating new profile');
-            
-            // Create a profile record
+            console.log('[LOGIN] Profile not found, creating new profile');
             const { error: insertError } = await supabase
               .from('profiles')
               .insert([
                 {
-                  id: data.user.id,
+                  user_id: data.user.id,
                   name: data.user.email?.split('@')[0] || 'User',
                   email: data.user.email,
                   updated_at: new Date().toISOString(),
                 }
               ]);
-            
+
             if (insertError) {
-              console.error('Profile creation error:', JSON.stringify(insertError, null, 2));
+              console.error('[LOGIN] Profile creation error:', JSON.stringify(insertError, null, 2));
             }
-            
-            const user: User = {
+
+            const user = {
               id: data.user.id,
               name: data.user.email?.split('@')[0] || 'User',
               email: data.user.email || '',
               avatar: null,
             };
-            
+            console.log('[LOGIN] Setting user state with new profile');
             set({ user, isAuthenticated: true, isLoading: false });
+            clearTimeout(timeout);
             return;
           }
-          
-          const user: User = {
+
+          const user = {
             id: data.user.id,
             name: profileData?.name || data.user.email?.split('@')[0] || 'User',
             email: data.user.email || '',
@@ -167,18 +193,36 @@ export const useAuthStore = create<AuthState>()(
             location: profileData?.location || null,
             bio: profileData?.bio || null,
           };
-          
-          console.log('Setting user state:', user.name);
+
+          console.log('[LOGIN] Setting complete user state:', user);
           set({ user, isAuthenticated: true, isLoading: false });
-          
+          clearTimeout(timeout);
+
           // Fetch additional user data
           const authStore = get();
-          authStore.fetchPaymentMethods();
-          authStore.fetchNotificationPreferences();
-          authStore.fetchUserSettings();
+          console.log('[LOGIN] Fetching additional user data');
+          await Promise.all([
+            authStore.fetchPaymentMethods(),
+            authStore.fetchNotificationPreferences(),
+            authStore.fetchUserSettings()
+          ]);
+          console.log('[LOGIN] End - success');
         } catch (error) {
-          console.error('Login error:', error);
-          set({ error: handleSupabaseError(error), isLoading: false });
+          console.error('[LOGIN] Login error:', error);
+          let errorMessage = 'Une erreur inconnue est survenue';
+          try {
+            errorMessage = handleSupabaseError(error) || errorMessage;
+          } catch (e) {
+            // fallback to default error message
+          }
+          console.log('[LOGIN] Setting error state:', errorMessage);
+          set({ error: errorMessage, isLoading: false });
+          clearTimeout(timeout);
+          console.log('[LOGIN] End - error');
+        } finally {
+          console.log('[LOGIN] Finally block - ensuring loading state is false');
+          set((state) => ({ ...state, isLoading: false }));
+          clearTimeout(timeout);
         }
       },
       
@@ -245,7 +289,7 @@ export const useAuthStore = create<AuthState>()(
             .from('profiles')
             .insert([
               {
-                id: data.user.id, // This should match the auth.users.id
+                user_id: data.user.id,
                 name: name,
                 email: email,
                 updated_at: new Date().toISOString(),
@@ -269,7 +313,7 @@ export const useAuthStore = create<AuthState>()(
                 .from('profiles')
                 .upsert([
                   {
-                    id: data.user.id,
+                    user_id: data.user.id,
                     name: name,
                     email: email,
                     updated_at: new Date().toISOString(),
@@ -385,7 +429,7 @@ export const useAuthStore = create<AuthState>()(
           const { data: profileData, error: profileError } = await supabase
             .from('profiles')
             .select('*')
-            .eq('id', data.session.user.id)
+            .eq('user_id', data.session.user.id)
             .maybeSingle();
           
           if (profileError) {
@@ -412,7 +456,7 @@ export const useAuthStore = create<AuthState>()(
               .from('profiles')
               .upsert([
                 {
-                  id: data.session.user.id,
+                  user_id: data.session.user.id,
                   name: data.session.user.email?.split('@')[0] || 'User',
                   email: data.session.user.email,
                   updated_at: new Date().toISOString(),
@@ -483,7 +527,7 @@ export const useAuthStore = create<AuthState>()(
           
           // Prepare the data for update
           const updateData = {
-            id: user.id, // Make sure to include the id for upsert
+            user_id: user.id,
             name: profileData.name !== undefined ? profileData.name : user.name,
             phone: profileData.phone !== undefined ? profileData.phone : user.phone,
             location: profileData.location !== undefined ? profileData.location : user.location,
@@ -758,7 +802,7 @@ export const useAuthStore = create<AuthState>()(
           const { data, error } = await supabase
             .from('profiles')
             .select('settings')
-            .eq('id', user.id)
+            .eq('user_id', user.id)
             .single();
           
           if (error) {
@@ -804,7 +848,7 @@ export const useAuthStore = create<AuthState>()(
                   },
                   updated_at: new Date().toISOString()
                 })
-                .eq('id', user.id);
+                .eq('user_id', user.id);
               
               if (updateError) {
                 console.error('Error creating default user settings:', JSON.stringify(updateError, null, 2));
@@ -951,7 +995,7 @@ export const useAuthStore = create<AuthState>()(
               settings: updatedSettings,
               updated_at: new Date().toISOString()
             })
-            .eq('id', user.id);
+            .eq('user_id', user.id);
           
           if (error) {
             console.error('Error updating user settings in database:', JSON.stringify(error, null, 2));
@@ -1141,7 +1185,7 @@ export const useAuthStore = create<AuthState>()(
           const { error: profileDeleteError } = await supabase
             .from('profiles')
             .delete()
-            .eq('id', user.id);
+            .eq('user_id', user.id);
           
           if (profileDeleteError) {
             console.error('Profile deletion error:', JSON.stringify(profileDeleteError, null, 2));
