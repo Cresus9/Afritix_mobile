@@ -1,9 +1,9 @@
 import CryptoJS from 'crypto-js';
 import { Platform } from 'react-native';
 
-// IMPORTANT: This key MUST match the one used in the backend
-// In production, this should be fetched from a secure source
-const DEFAULT_ENCRYPTION_KEY = 'afritix-secure-key';
+// IMPORTANT: This key MUST match the one used in the web/admin applications
+// In production it should come from a secure source (env variable or config)
+const DEFAULT_ENCRYPTION_KEY = 'default-secret-key';
 
 /**
  * Generate a secure random ID that follows the UUID format
@@ -118,38 +118,18 @@ export function generateUUID(): string {
  */
 export function generateQRCodeData(ticketId: string): string {
   try {
-    // Create a standardized data object that matches the web version
-    const data = {
+    const payload = {
       id: ticketId,
       timestamp: Date.now(),
-      type: 'ticket',
-      version: '1.0'
     };
-    
-    // Convert to string in a consistent format
-    const dataString = JSON.stringify(data);
-    
-    // Use the same encryption key and method as web version
-    const secretKey = DEFAULT_ENCRYPTION_KEY;
-    
-    try {
-      // Use consistent encryption settings
-      const encrypted = CryptoJS.AES.encrypt(dataString, secretKey, {
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7
-      }).toString();
-      
-      // Format the final QR code data exactly like web version
-      return `AFX1:${encrypted}`;
-    } catch (encryptError) {
-      console.error('AES encryption failed:', encryptError);
-      // Use the same fallback format as web version
-      return `AFX0:${ticketId}:${Date.now()}`;
-    }
+
+    return CryptoJS.AES.encrypt(
+      JSON.stringify(payload),
+      DEFAULT_ENCRYPTION_KEY
+    ).toString();
   } catch (error) {
     console.error('Error generating QR code data:', error);
-    // Use the same fallback format as web version
-    return `AFX0:${ticketId}:${Date.now()}`;
+    throw new Error('Failed to generate QR code');
   }
 }
 
@@ -159,52 +139,28 @@ export function generateQRCodeData(ticketId: string): string {
  */
 export function decodeQRData(qrData: string): { id: string; timestamp: number } | null {
   try {
-    // Check for prefix to determine format
-    if (qrData.startsWith('AFX1:')) {
-      // Encrypted format
-      const encrypted = qrData.substring(5); // Remove 'AFX1:' prefix
-      const secretKey = DEFAULT_ENCRYPTION_KEY;
-      
-      const decrypted = CryptoJS.AES.decrypt(encrypted, secretKey, {
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7
-      }).toString(CryptoJS.enc.Utf8);
-      
-      const data = JSON.parse(decrypted);
-      
-      // Validate the data format
-      if (!data.id || !data.timestamp || data.type !== 'ticket' || data.version !== '1.0') {
-        return null;
-      }
-      
-      // Verify timestamp (60 seconds validity)
-      const now = Date.now();
-      if (now - data.timestamp > 60000) {
-        return null;
-      }
-      
-      return {
-        id: data.id,
-        timestamp: data.timestamp
-      };
-    } else if (qrData.startsWith('AFX0:')) {
-      // Fallback format
-      const parts = qrData.split(':');
-      if (parts.length !== 3) return null;
-      
-      const id = parts[1];
-      const timestamp = parseInt(parts[2], 10);
-      
-      // Verify timestamp (60 seconds validity)
-      const now = Date.now();
-      if (now - timestamp > 60000) {
-        return null;
-      }
-      
-      return { id, timestamp };
+    const bytes = CryptoJS.AES.decrypt(qrData, DEFAULT_ENCRYPTION_KEY);
+    const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+
+    if (!decrypted) {
+      throw new Error('Invalid QR code format');
     }
-    
-    return null;
+
+    const payload = JSON.parse(decrypted);
+
+    if (!payload.id || !payload.timestamp) {
+      throw new Error('Invalid ticket data format');
+    }
+
+    const now = Date.now();
+    if (now - payload.timestamp > 24 * 60 * 60 * 1000) {
+      throw new Error('Ticket QR code has expired');
+    }
+
+    return {
+      id: payload.id,
+      timestamp: payload.timestamp,
+    };
   } catch (error) {
     console.error('Error decoding QR data:', error);
     return null;
