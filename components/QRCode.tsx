@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator, Text, Platform } from 'react-native';
 import QRCodeSVG from 'react-native-qrcode-svg';
 import { colors } from '@/constants/colors';
-import { generateQRCodeData, verifyQRCodeData } from '@/utils/encryption';
+import { generateQRData, verifyQRCodeData } from '@/utils/encryption';
 
 interface QRCodeProps {
   value: string;
@@ -43,7 +43,7 @@ export const QRCodeDisplay: React.FC<QRCodeProps> = ({
       } else {
         try {
           // Try to generate the encrypted QR code data
-          encryptedData = generateQRCodeData(value);
+          encryptedData = generateQRData(value);
         } catch (encryptError) {
           console.error('Error in encryption, falling back to simple format:', encryptError);
           setErrorCount(prev => prev + 1);

@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ticket, ValidationEvent, Event } from '@/types';
 import { supabase, handleSupabaseError } from '@/lib/supabase';
 import { useAuthStore } from './auth-store';
-import { generateQRCodeData, generateSecureId } from '@/utils/encryption';
+import { generateQRData, generateSecureId } from '@/utils/encryption';
 
 interface TicketsState {
   tickets: Ticket[];
@@ -139,7 +139,7 @@ export const useTicketsStore = create<TicketsState>()(
           
           if (existingTicket) {
             // Generate fresh QR code to ensure it's valid
-            const qrCode = generateQRCodeData(id);
+            const qrCode = generateQRData(id);
             // Fetch scan history from ticket_scans
             let scanHistory = [];
             try {
@@ -202,7 +202,7 @@ export const useTicketsStore = create<TicketsState>()(
           }
           
           // Generate fresh QR code
-          const qrCode = generateQRCodeData(id);
+          const qrCode = generateQRData(id);
           
           // Fetch scan history for this ticket
           let scanHistory = [];
@@ -299,7 +299,7 @@ export const useTicketsStore = create<TicketsState>()(
           const ticketId = generateSecureId();
           
           // Generate secure QR code data
-          const qrCode = generateQRCodeData(ticketId);
+          const qrCode = generateQRData(ticketId);
           
           // Create an order first
           const { data: orderData, error: orderError } = await supabase
