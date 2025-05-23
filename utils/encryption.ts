@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 
 // IMPORTANT: This key MUST match the one used in the backend
 // In production, this should be fetched from a secure source
-const DEFAULT_ENCRYPTION_KEY = 'afritix-secure-key';
+const DEFAULT_ENCRYPTION_KEY = 'default-secret-key';
 
 /**
  * Generate a secure random ID that follows the UUID format
