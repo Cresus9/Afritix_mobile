@@ -12,6 +12,8 @@ import {
   Image,
   StatusBar
 } from 'react-native';
+import debug from '@/lib/debug'; // Import debug
+import ErrorBoundary from '@/components/ErrorBoundary'; // Import ErrorBoundary
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { 
@@ -38,6 +40,7 @@ import { useThemeStore } from '@/store/theme-store';
 const { width } = Dimensions.get('window');
 
 export default function DiscoverScreen() {
+  debug.log('[TabIndexScreen] Component rendering START.'); // New Log
   const router = useRouter();
   const scrollY = useRef(new Animated.Value(0)).current;
   const { colors } = useThemeStore();
@@ -56,9 +59,13 @@ export default function DiscoverScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   
   useEffect(() => {
+    debug.log('[TabIndexScreen] useEffect hook triggered.'); // New Log
     if (events.length === 0) {
       fetchEvents();
     }
+    return () => {
+      debug.log('[TabIndexScreen] Component unmounting.'); // New Log
+    };
   }, []);
   
   const handleSearch = () => {
@@ -72,18 +79,21 @@ export default function DiscoverScreen() {
   };
   
   if (isLoading && events.length === 0) {
+    debug.log('[TabIndexScreen] Rendering LoadingIndicator.'); // New Log
     return <LoadingIndicator fullScreen message="Loading events..." />;
   }
   
+  debug.log('[TabIndexScreen] Returning ScrollView wrapped in ErrorBoundary.'); // Modified log
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
-      <StatusBar barStyle={colors.theme === 'dark' ? "light-content" : "dark-content"} />
-      
-      <ScrollView 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* Search Bar */}
+    <ErrorBoundary name="DiscoverScreen">
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
+        <StatusBar barStyle={colors.theme === 'dark' ? "light-content" : "dark-content"} />
+        
+        <ScrollView 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {/* Search Bar */}
         <View style={styles.searchContainer}>
           <View style={[styles.searchBar, { backgroundColor: colors.card }]}>
             <TextInput
@@ -291,6 +301,7 @@ export default function DiscoverScreen() {
         </View>
       </ScrollView>
     </SafeAreaView>
+    </ErrorBoundary>
   );
 }
 

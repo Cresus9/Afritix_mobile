@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User, PaymentMethod, NotificationPreferences, UserSettings, SecuritySettings } from '@/types';
 import { supabase, handleSupabaseError } from '@/lib/supabase';
 import { getMockPaymentMethodsForUser } from '@/mocks/payment-methods';
+import debug from '@/lib/debug'; // Ensure debug is imported
 
 interface AuthState {
   user: User | null;
@@ -407,23 +408,25 @@ export const useAuthStore = create<AuthState>()(
       refreshUser: async () => {
         set({ isLoading: true, error: null });
         try {
-          console.log('Refreshing user data');
-          
+          debug.log('[refreshUser] Starting user data refresh.'); // Modified Log
+
           const { data, error: sessionError } = await supabase.auth.getSession();
           
           if (sessionError) {
-            console.error('Session fetch error:', JSON.stringify(sessionError, null, 2));
+            // console.error('Session fetch error:', JSON.stringify(sessionError, null, 2)); // Existing log, let's use debug now
+            debug.error('[refreshUser] Session fetch error:', JSON.stringify(sessionError, null, 2));
             set({ user: null, isAuthenticated: false, isLoading: false });
             return;
           }
           
           if (!data.session) {
-            console.log('No active session found');
+            // console.log('No active session found'); // Existing log, let's use debug now
+            debug.log('[refreshUser] No active session found');
             set({ user: null, isAuthenticated: false, isLoading: false });
             return;
           }
           
-          console.log('Active session found for user:', data.session.user.id);
+          debug.log('[refreshUser] Active session found for user:', data.session.user.id);
           
           // Fetch user profile data with all fields
           const { data: profileData, error: profileError } = await supabase
@@ -432,24 +435,24 @@ export const useAuthStore = create<AuthState>()(
             .eq('user_id', data.session.user.id)
             .maybeSingle();
           
+          let userToSet: User;
+
           if (profileError) {
-            console.error('Profile fetch error during refresh:', JSON.stringify(profileError, null, 2));
+            // console.error('Profile fetch error during refresh:', JSON.stringify(profileError, null, 2)); // Existing log
+            debug.error('[refreshUser] Profile fetch error during refresh:', JSON.stringify(profileError, null, 2));
             
             // Continue with basic user info
-            const user: User = {
+            userToSet = { // Changed 'user' to 'userToSet'
               id: data.session.user.id,
               name: data.session.user.email?.split('@')[0] || 'User',
               email: data.session.user.email || '',
               avatar: null,
             };
-            
-            set({ user, isAuthenticated: true, isLoading: false });
-            return;
-          }
-          
-          // If profile doesn't exist, create one
-          if (!profileData) {
-            console.log('Profile not found during refresh, creating new profile');
+            // set({ user, isAuthenticated: true, isLoading: false }); // Will be set later
+            // return; // Removed to allow Promise.all to run
+          } else if (!profileData) { // If profile doesn't exist, create one
+            // console.log('Profile not found during refresh, creating new profile'); // Existing log
+            debug.log('[refreshUser] Profile not found during refresh, creating new profile');
             
             // Try upsert instead of insert to handle RLS policies
             const { error: upsertError } = await supabase
@@ -469,49 +472,68 @@ export const useAuthStore = create<AuthState>()(
               ]);
             
             if (upsertError) {
-              console.error('Profile creation error during refresh:', JSON.stringify(upsertError, null, 2));
+              // console.error('Profile creation error during refresh:', JSON.stringify(upsertError, null, 2)); // Existing log
+              debug.error('[refreshUser] Profile creation error during refresh:', JSON.stringify(upsertError, null, 2));
             }
             
-            const user: User = {
+            userToSet = { // Changed 'user' to 'userToSet'
               id: data.session.user.id,
               name: data.session.user.email?.split('@')[0] || 'User',
               email: data.session.user.email || '',
               avatar: null,
             };
-            
-            set({ user, isAuthenticated: true, isLoading: false });
-            return;
+            // set({ user, isAuthenticated: true, isLoading: false }); // Will be set later
+            // return; // Removed to allow Promise.all to run
+          } else {
+            // Create user object with all profile fields
+            userToSet = { // Changed 'user' to 'userToSet'
+              id: data.session.user.id,
+              name: profileData.name || data.session.user.email?.split('@')[0] || 'User',
+              email: data.session.user.email || '',
+              avatar: profileData.avatar_url,
+              phone: profileData.phone || null,
+              location: profileData.location || null,
+              bio: profileData.bio || null,
+            };
           }
           
-          // Create user object with all profile fields
-          const user: User = {
-            id: data.session.user.id,
-            name: profileData.name || data.session.user.email?.split('@')[0] || 'User',
-            email: data.session.user.email || '',
-            avatar: profileData.avatar_url,
-            phone: profileData.phone || null,
-            location: profileData.location || null,
-            bio: profileData.bio || null,
-          };
-          
-          console.log('User refreshed successfully:', user);
-          set({ user, isAuthenticated: true, isLoading: false });
-          
-          // Fetch additional user data
+          // console.log('User refreshed successfully:', userToSet); // Existing log
+          // set({ user: userToSet, isAuthenticated: true, isLoading: false }); // Temporarily move this 'set' or be careful
+          // For now, we will set user and isAuthenticated, but keep isLoading true until all data is fetched
+          set(prevState => ({ ...prevState, user: userToSet, isAuthenticated: true, isLoading: true }));
+
+
+          debug.log('[refreshUser] About to call Promise.all for additional data.'); // New Log
           const authStore = get();
           await Promise.all([
             authStore.fetchPaymentMethods(),
             authStore.fetchNotificationPreferences(),
-            authStore.fetchUserSettings()
+            authStore.fetchUserSettings() // This now has more logs
           ]);
+          debug.log('[refreshUser] Promise.all for additional data COMPLETED.'); // New Log
+
+          // Ensure user object is up-to-date if profile was fetched/created before Promise.all
+          // This part might need adjustment based on where 'user' variable is fully populated
+          const finalUserObject = get().user; // Or re-fetch profile if necessary to get the most current state
+          const finalSettings = get().userSettings;
+          debug.log('[refreshUser] Final user object before main set state:', finalUserObject); // New Log
+          debug.log('[refreshUser] Final user settings before main set state:', finalSettings); // New Log
           
-          // Initialize security settings if they don't exist
-          if (!get().securitySettings) {
-            set({ securitySettings: createDefaultSecuritySettings(user.id) });
-          }
+          // This is the main set state after all async operations in refreshUser
+          set(prevState => ({ 
+            ...prevState, // spread previous state to ensure other parts are not lost
+            user: finalUserObject, // ensure this is the correct user object
+            isAuthenticated: !!finalUserObject, 
+            isLoading: false,
+            // securitySettings might be set within fetchUserSettings, ensure it's preserved
+            securitySettings: get().securitySettings || prevState.securitySettings 
+          }));
+
+          debug.log('[refreshUser] User data refresh COMPLETED and state set.'); // New Log
         } catch (error) {
-          console.error('Error refreshing user:', error);
-          set({ error: handleSupabaseError(error), isLoading: false });
+          // console.error('Error refreshing user:', error); // Existing log
+          debug.error('[refreshUser] CRITICAL EXCEPTION in refreshUser', error); // Modified Log
+          set({ error: handleSupabaseError(error), isLoading: false, isAuthenticated: false, user: null });
         }
       },
       
@@ -775,68 +797,72 @@ export const useAuthStore = create<AuthState>()(
       
       fetchUserSettings: async () => {
         const { user, isAuthenticated } = get();
-        
-        // Check if user is authenticated
+        debug.log('[fetchUserSettings] Attempting to fetch settings for user:', { userId: user?.id, isAuthenticated }); // New Log
+
         if (!user || !isAuthenticated) {
-          console.log('fetchUserSettings: User not authenticated');
+          debug.log('[fetchUserSettings] User not authenticated, returning.'); // New Log
           return;
         }
-        
+
         try {
-          console.log('Fetching user settings for user:', user.id);
+          // ADD THIS NEW LOG:
+          debug.log('[fetchUserSettings] Synchronous part done, ABOUT TO AWAIT supabase.auth.getSession().'); 
           
-          // Verify Supabase session is active
           const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-          
+
           if (sessionError) {
-            console.error('Session verification error:', JSON.stringify(sessionError, null, 2));
+            // console.error('Session verification error:', JSON.stringify(sessionError, null, 2)); // Old log
+            debug.error('[fetchUserSettings] Session verification error', sessionError); // New Log
             return;
           }
-          
           if (!sessionData.session) {
-            console.log('No active Supabase session found');
+            // console.log('No active Supabase session found'); // Old log
+            debug.log('[fetchUserSettings] No active Supabase session found, returning.'); // New Log
             return;
           }
-          
-          // Get settings directly from the profiles table
+
+          // console.log('Fetching user settings for user:', user.id); // Old log
+          debug.log('[fetchUserSettings] Fetching settings from profiles table for user:', user.id); // New Log
           const { data, error } = await supabase
             .from('profiles')
             .select('settings')
             .eq('user_id', user.id)
             .single();
-          
+
           if (error) {
-            console.error('Error fetching user settings:', JSON.stringify(error, null, 2));
-            console.log('Error code:', error.code);
-            console.log('Error message:', error.message);
-            console.log('Error details:', error.details);
+            // console.error('Error fetching user settings:', JSON.stringify(error, null, 2)); // Old log
+            // console.log('Error code:', error.code); // Old log
+            // console.log('Error message:', error.message); // Old log
+            // console.log('Error details:', error.details); // Old log
+            debug.error('[fetchUserSettings] Supabase error fetching settings', { code: error.code, message: error.message, details: error.details }); // Modified Log
             
-            // Don't throw, just return default settings
             const defaultSettings: UserSettings = createDefaultSettings(user.id);
+            debug.log('[fetchUserSettings] Using default settings due to error.', defaultSettings); // New Log
             set({ userSettings: defaultSettings });
             return;
           }
           
-          // Check if settings exist and are valid
+          debug.log('[fetchUserSettings] Raw settings data from Supabase:', data); // New Log
+
           if (data && data.settings && typeof data.settings === 'object') {
-            console.log('User settings found:', data.settings);
+            // console.log('User settings found:', data.settings); // Old log
+            debug.log('[fetchUserSettings] User settings found in profile:', data.settings); // New Log
             
-            // Validate settings object and use defaults for missing properties
             const settings: UserSettings = {
               userId: user.id,
               language: validateSettingValue(data.settings.language, 'string', 'fr'),
               theme: validateThemeSetting(data.settings.theme),
               currency: validateSettingValue(data.settings.currency, 'string', 'XOF'),
             };
-            
+            debug.log('[fetchUserSettings] Processed and validated settings:', settings); // New Log
             set({ userSettings: settings });
           } else {
-            console.log('No valid user settings found, creating default settings');
+            // console.log('No valid user settings found, creating default settings'); // Old log
+            debug.log('[fetchUserSettings] No valid settings in profile or data is null/malformed. Creating default settings.'); // New Log
             
-            // Create default settings
             const defaultSettings: UserSettings = createDefaultSettings(user.id);
+            debug.log('[fetchUserSettings] Attempting to save default settings to profile for user:', user.id); // New Log
             
-            // Try to update the profile with default settings
             try {
               const { error: updateError } = await supabase
                 .from('profiles')
@@ -851,27 +877,30 @@ export const useAuthStore = create<AuthState>()(
                 .eq('user_id', user.id);
               
               if (updateError) {
-                console.error('Error creating default user settings:', JSON.stringify(updateError, null, 2));
-                // Continue with default settings anyway
+                // console.error('Error creating default user settings:', JSON.stringify(updateError, null, 2)); // Old log
+                debug.error('[fetchUserSettings] Error saving default settings to profile', updateError); // New Log
               } else {
-                console.log('Default settings saved to database');
+                // console.log('Default settings saved to database'); // Old log
+                debug.log('[fetchUserSettings] Default settings saved to profile successfully.'); // New Log
               }
-            } catch (updateError) {
-              console.error('Exception during settings update:', updateError);
+            } catch (updateCatchError) {
+              // console.error('Exception during settings update:', updateError); // Old log - typo here, should be updateCatchError
+              debug.error('[fetchUserSettings] Exception during default settings save', updateCatchError); // New Log
             }
             
             set({ userSettings: defaultSettings });
           }
           
-          // Initialize security settings if they don't exist
           if (!get().securitySettings) {
+            debug.log('[fetchUserSettings] Initializing default security settings.'); // New Log
             set({ securitySettings: createDefaultSecuritySettings(user.id) });
           }
+          debug.log('[fetchUserSettings] Completed successfully.'); // New Log
         } catch (error) {
-          console.error('Exception in fetchUserSettings:', error);
+          // console.error('Exception in fetchUserSettings:', error); // Old log
+          debug.error('[fetchUserSettings] CRITICAL EXCEPTION in fetchUserSettings', error); // New Log
           
-          // Create default settings in case of error
-          const defaultSettings: UserSettings = createDefaultSettings(user?.id || 'unknown');
+          const defaultSettings: UserSettings = createDefaultSettings(user?.id || 'unknown_user_fetch_settings_exception'); // Modified for safety
           set({ userSettings: defaultSettings });
         }
       },

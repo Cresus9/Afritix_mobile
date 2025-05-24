@@ -2,10 +2,6 @@ import CryptoJS from 'crypto-js';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-// IMPORTANT: This key MUST match the one used in the web/admin applications
-// In production it should come from a secure source (env variable or config)
-const DEFAULT_ENCRYPTION_KEY =
-  (Constants.expoConfig?.extra?.TICKET_SECRET_KEY as string) || 'default-secret-key';
 
 /**
  * Generate a secure random ID that follows the UUID format

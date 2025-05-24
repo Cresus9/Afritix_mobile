@@ -1,6 +1,6 @@
 # QR Code Compatibility Guide for AfriTix Mobile App
 
-This guide explains how to ensure QR codes generated in the AfriTix web app are compatible with the mobile app scanner. Both applications read the AES secret key from the `TICKET_SECRET_KEY` environment variable.
+
 
 ## Current Implementation
 
@@ -73,15 +73,6 @@ npm install crypto-js
 
 ### Mobile App QR Code Scanner Implementation
 
-```typescript
-import Constants from 'expo-constants';
-
-// IMPORTANT: This must match the SECRET_KEY in the web app
-const SECRET_KEY =
-  (Constants.expoConfig?.extra?.TICKET_SECRET_KEY as string) || 'default-secret-key';
-
-// ...
-```
 
 Refer to the repository README for a full example of the scanner component.
 

@@ -4,6 +4,7 @@ import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/store/auth-store';
+import ErrorBoundary from '@/components/ErrorBoundary'; // Import ErrorBoundary
 import { useThemeStore } from '@/store/theme-store';
 import { supabase } from '@/lib/supabase';
 import { initializeGlobalScope } from '@/lib/global';
@@ -99,8 +100,8 @@ const verifySupabaseConfig = () => {
 };
 
 export default function RootLayout() {
-  debug.log('RootLayout component rendering');
-  
+  debug.log('RootLayout component rendering (NEW LOG)'); // Existing log, ensure it's there
+
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -298,18 +299,23 @@ export default function RootLayout() {
     hideSplash();
   }, [isInitialized]);
 
+  debug.log('[RootLayout] Evaluating render conditions:', { error, isInitialized, isLoading }); // New Log
   if (error) {
+    debug.error('[RootLayout] Rendering ErrorFallback due to error state:', error); // New Log
     return <ErrorFallback error={error} />;
   }
 
   if (!isInitialized || isLoading) {
+    debug.log('[RootLayout] Rendering LoadingFallback.'); // New Log
     return <LoadingFallback />;
   }
 
+  debug.log('[RootLayout] Proceeding to render main app structure (SafeAreaProvider and Stack wrapped in ErrorBoundary).'); // Modified log
   return (
-    <SafeAreaProvider>
-      <StatusBar barStyle={theme === 'dark' ? 'light-content' : 'dark-content'} />
-      <Stack
+    <ErrorBoundary name="RootStack">
+      <SafeAreaProvider>
+        <StatusBar barStyle={theme === 'dark' ? 'light-content' : 'dark-content'} />
+        <Stack
         screenOptions={{
           headerStyle: {
             backgroundColor: colors.background,
@@ -522,6 +528,7 @@ export default function RootLayout() {
         />
       </Stack>
     </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 
