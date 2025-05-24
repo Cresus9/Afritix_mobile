@@ -1,5 +1,7 @@
 import { Buffer } from 'buffer';
 import 'react-native-url-polyfill/auto';
+import { Platform } from 'react-native';
+import EventEmitter from 'eventemitter3';
 import { ReadableStream, WritableStream, TransformStream } from 'web-streams-polyfill';
 
 // Add web streams to global scope if not already defined
@@ -35,6 +37,11 @@ if (typeof global.crypto === 'undefined') {
       });
     },
   };
+}
+
+// Add EventEmitter polyfill on web
+if (Platform.OS === 'web' && typeof global.EventEmitter === 'undefined') {
+  global.EventEmitter = EventEmitter as any;
 }
 
 export { ReadableStream, WritableStream, TransformStream }; 
