@@ -12,18 +12,21 @@ const ENV = {
     SUPABASE_URL: process.env.SUPABASE_URL_DEV || 'https://uwmlagvsivxqocklxbbo.supabase.co',
     SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY_DEV || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3bWxhZ3ZzaXZ4cW9ja2x4YmJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE2OTg2NzY4MDAsImV4cCI6MjAxNDI1MjgwMH0.PxsT2Ly4KI4kz0JsmezKhs-w4ZXlxR6KuXGqbYBh8Yw',
     API_URL: process.env.API_URL_DEV || 'https://api-dev.afritix.com',
+    TICKET_SECRET_KEY: process.env.TICKET_SECRET_KEY_DEV || 'default-secret-key',
     ENABLE_DEBUG: 'true',
   },
   staging: {
     SUPABASE_URL: process.env.SUPABASE_URL || 'https://uwmlagvsivxqocklxbbo.supabase.co',
     SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
     API_URL: process.env.API_URL_STAGING || 'https://api-staging.afritix.com',
+    TICKET_SECRET_KEY: process.env.TICKET_SECRET_KEY || 'default-secret-key',
     ENABLE_DEBUG: 'true',
   },
   production: {
     SUPABASE_URL: process.env.SUPABASE_URL || 'https://uwmlagvsivxqocklxbbo.supabase.co',
     SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
     API_URL: process.env.API_URL_PROD || 'https://api.afritix.com',
+    TICKET_SECRET_KEY: process.env.TICKET_SECRET_KEY || 'default-secret-key',
     ENABLE_DEBUG: 'false',
   },
 };

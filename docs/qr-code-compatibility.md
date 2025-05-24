@@ -1,6 +1,6 @@
 # QR Code Compatibility Guide for AfriTix Mobile App
 
-This guide explains how to ensure QR codes generated in the AfriTix web app are compatible with the mobile app scanner.
+
 
 ## Current Implementation
 
@@ -73,12 +73,6 @@ npm install crypto-js
 
 ### Mobile App QR Code Scanner Implementation
 
-```typescript
-// IMPORTANT: This must match the SECRET_KEY in the web app
-const SECRET_KEY = 'default-secret-key';
-
-// ...
-```
 
 Refer to the repository README for a full example of the scanner component.
 
