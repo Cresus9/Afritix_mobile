@@ -187,8 +187,8 @@ export default function RootLayout() {
         debug.log('Navigating to tabs due to existing session');
         router.replace('/(tabs)');
       } else {
-        debug.log('No session found, navigating to login');
-        router.replace('/auth/login');
+        debug.log('No session found, navigating to index');
+        router.replace('/');
       }
     });
 
@@ -209,16 +209,16 @@ export default function RootLayout() {
           router.replace('/(tabs)');
         }, 100);
       } else if (event === 'SIGNED_OUT') {
-        debug.log('Navigating to login after sign out');
-        router.replace('/auth/login');
+        debug.log('Navigating to index after sign out');
+        router.replace('/');
       } else if (event === 'INITIAL_SESSION') {
         debug.log('Initial session event received');
         if (session) {
           debug.log('Initial session found, navigating to tabs');
           router.replace('/(tabs)');
         } else {
-          debug.log('No initial session found, navigating to login');
-          router.replace('/auth/login');
+          debug.log('No initial session found, navigating to index');
+          router.replace('/');
         }
       }
     });
