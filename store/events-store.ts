@@ -40,10 +40,14 @@ export const useEventsStore = create<EventsState>()(
       },
       
       fetchEvents: async () => {
+        console.log('[fetchEvents] Started');
         set({ isLoading: true, error: null });
-        
+
+        // Add a 10s timeout for debugging
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000); // 10s max
+
         try {
-          // Fetch events from Supabase
           const { data, error } = await supabase
             .from('events')
             .select(`
@@ -69,53 +73,52 @@ export const useEventsStore = create<EventsState>()(
               organizer_id,
               categories
             `)
-            .eq('status', 'PUBLISHED')  // Only fetch published events
-            .order('date', { ascending: true });
-          
+            .eq('status', 'PUBLISHED')
+            .order('date', { ascending: true })
+            .abortSignal(controller.signal);
+
+          clearTimeout(timeout);
+
           if (error) {
+            console.error('[fetchEvents] Supabase error:', error.message);
             throw error;
           }
-          
-          if (data && data.length > 0) {
-            // Map Supabase data to Event type
-            const events: Event[] = data.map(item => ({
-              ...item,
-              venue: item.location,
-              image: item.image_url,
-              category: item.categories?.[0] || '',
-              subcategory: '',
-              ticketsAvailable: item.capacity - item.tickets_sold,
-              isFeatured: item.featured,
-              availableTickets: item.capacity - item.tickets_sold
-            }));
-            
-            // Filter featured events (only from published events)
-            const featured = events.filter(event => event.featured);
-            
-            set({ 
-              events, 
-              featuredEvents: featured,
-              filteredEvents: events,
-              isLoading: false,
-              error: null
-            });
+
+          console.log('[fetchEvents] Fetched', data?.length, 'events');
+
+          const events = (data ?? []).map(item => ({
+            ...item,
+            venue: item.location,
+            image: item.image_url,
+            category: item.categories?.[0] || '',
+            subcategory: '',
+            ticketsAvailable: item.capacity - item.tickets_sold,
+            isFeatured: item.featured,
+            availableTickets: item.capacity - item.tickets_sold
+          }));
+
+          set({
+            events,
+            featuredEvents: events.filter(e => e.featured),
+            filteredEvents: events,
+            isLoading: false,
+            error: events.length ? null : 'Aucun événement publié trouvé.'
+          });
+
+          console.log('[fetchEvents] Success');
+        } catch (err: any) {
+          clearTimeout(timeout);
+          if (err.name === 'AbortError') {
+            console.error('[fetchEvents] Timeout or fetch aborted:', err);
           } else {
-            set({ 
-              events: [], 
-              featuredEvents: [],
-              filteredEvents: [],
-              error: 'No published events found',
-              isLoading: false 
-            });
+            console.error('[fetchEvents] Caught exception:', err);
           }
-        } catch (error: any) {
-          console.error('Error fetching events:', error);
-          set({ 
-            events: [], 
+          set({
+            events: [],
             featuredEvents: [],
             filteredEvents: [],
-            error: error.message || 'Failed to fetch events',
-            isLoading: false 
+            isLoading: false,
+            error: err?.message || 'Échec du chargement des événements',
           });
         }
       },

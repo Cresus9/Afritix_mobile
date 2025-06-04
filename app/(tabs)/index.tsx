@@ -59,12 +59,10 @@ export default function DiscoverScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   
   useEffect(() => {
-    debug.log('[TabIndexScreen] useEffect hook triggered.'); // New Log
-    if (events.length === 0) {
-      fetchEvents();
-    }
+    debug.log('[TabIndexScreen] useEffect hook triggered.');
+    fetchEvents(); // Always run once on mount
     return () => {
-      debug.log('[TabIndexScreen] Component unmounting.'); // New Log
+      debug.log('[TabIndexScreen] Component unmounting.');
     };
   }, []);
   
@@ -81,6 +79,14 @@ export default function DiscoverScreen() {
   if (isLoading && events.length === 0) {
     debug.log('[TabIndexScreen] Rendering LoadingIndicator.'); // New Log
     return <LoadingIndicator fullScreen message="Loading events..." />;
+  }
+  
+  if (!isLoading && events.length === 0) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text>Aucun événement disponible pour le moment.</Text>
+      </View>
+    );
   }
   
   debug.log('[TabIndexScreen] Returning ScrollView wrapped in ErrorBoundary.'); // Modified log

@@ -21,7 +21,7 @@ extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
   }
 }
 
-rootProject.name = 'AfriTix (development)'
+rootProject.name = 'AfriTixdevelopment'
 
 dependencyResolutionManagement {
   versionCatalogs {
